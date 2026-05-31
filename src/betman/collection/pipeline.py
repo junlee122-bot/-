@@ -14,6 +14,7 @@ from ..domain.enums import Sport
 from ..domain.models import CollectionRequest, NormalizedMatchBundle
 from .base import (
     BetmanCollector,
+    FeatureCollector,
     MatchCollector,
     NewsCollector,
     OddsCollector,
@@ -27,6 +28,7 @@ class DataCollectionPipeline:
         odds_collector: OddsCollector,
         betman_collector: BetmanCollector,
         news_collector: NewsCollector,
+        feature_collector: FeatureCollector | None = None,
         *,
         require_betman: bool = True,
     ) -> None:
@@ -34,6 +36,7 @@ class DataCollectionPipeline:
         self._odds = odds_collector
         self._betman = betman_collector
         self._news = news_collector
+        self._features = feature_collector
         # True면 베트맨 미발매 경기는 제외 (실제 베팅 대상만 남김)
         self._require_betman = require_betman
 
@@ -60,6 +63,11 @@ class DataCollectionPipeline:
                 injuries=self._matches.collect_injuries(match),
                 lineups=self._matches.collect_lineups(match),
                 news=self._news.collect_news(match),
+                features=(
+                    self._features.collect_features(match)
+                    if self._features is not None
+                    else None
+                ),
             )
             out.append(bundle)
         return out
@@ -84,10 +92,15 @@ def summarize_bundles(bundles: list[NormalizedMatchBundle]) -> str:
         lines.append(
             f"[{m.sport.value}] {m.home.name} vs {m.away.name}  ({m.league})"
         )
+        feat_str = ""
+        if b.features is not None:
+            from ..domain.features import completeness
+
+            feat_str = f" | feature 충실도 {completeness(b.features):.0%}"
         lines.append(
             f"    베트맨 발매 {len(b.betman_offerings)}항목 | "
             f"해외 북메이커 {b.overseas_bookmaker_count}곳 "
             f"({len(b.overseas_odds)}배당) | "
-            f"부상 {len(b.injuries)} | 뉴스 {len(b.news)}건"
+            f"부상 {len(b.injuries)} | 뉴스 {len(b.news)}건{feat_str}"
         )
     return "\n".join(lines)

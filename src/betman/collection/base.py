@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from datetime import date
 
 from ..domain.enums import Sport
+from ..domain.features import MatchFeatures
 from ..domain.models import (
     BetmanOffering,
     InjuryNote,
@@ -73,3 +74,18 @@ class NewsCollector(ABC):
     @abstractmethod
     def collect_news(self, match: Match) -> list[NewsItem]:
         """경기 관련 비정형 원문."""
+
+
+class FeatureCollector(ABC):
+    """정형: 종목별 예측 변수(폼/h2h/일정/배당흐름 + 종목 핵심 변수).
+
+    종목마다 결정적 변수가 다르므로(축구=xG·라인업, 야구=선발투수,
+    농구=휴식·스타결장) 구현체가 종목에 맞는 블록을 채운다.
+    값을 모르면 0으로 채우지 말고 Feature.missing 으로 결측을 명시할 것.
+
+    구현 예) mock / 통계 API(폼·xG·파크팩터 등) + 배당 API(라인 무브먼트).
+    """
+
+    @abstractmethod
+    def collect_features(self, match: Match) -> MatchFeatures:
+        """경기에 대한 종목별 정규화 feature 묶음."""

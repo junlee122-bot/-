@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, date
+from typing import TYPE_CHECKING
 
 from .enums import (
     MarketType,
@@ -16,6 +17,9 @@ from .enums import (
     SignalPolarity,
     Sport,
 )
+
+if TYPE_CHECKING:
+    from .features import MatchFeatures
 
 
 # --------------------------------------------------------------------------- #
@@ -159,6 +163,8 @@ class NormalizedMatchBundle:
     news: list[NewsItem] = field(default_factory=list)
     # 3단계(LLM)에서 news → sentiment_flags 로 채워짐
     sentiment_flags: list[SentimentFlag] = field(default_factory=list)
+    # 종목별 예측 변수(정형). FeatureCollector가 채운다.
+    features: "MatchFeatures | None" = None
 
     @property
     def has_betman(self) -> bool:
