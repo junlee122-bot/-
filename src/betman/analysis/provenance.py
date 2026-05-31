@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from ..domain.enums import MarketType, Outcome, Sport
 from ..domain.features import MatchFeatures, flatten_features
+from .base import PickAnalysis
 from .weights import weight_for
 
 
@@ -43,9 +44,17 @@ class PickInputSnapshot:
     betman_odds: float
     captured_at: datetime
     features: dict[str, FeatureValueLog] = field(default_factory=dict)
+    # 분석 결과 스냅샷 (사후 검증: 어떤 변수가 적중에 기여했는지)
+    fair_prob: Optional[float] = None         # Pinnacle 기준 공정 확률
+    edge_pct: Optional[float] = None
+    expected_value: Optional[float] = None
+    value_score: Optional[float] = None
     # 경기 후 채워지는 결과
     result_outcome: Optional[Outcome] = None
     hit: Optional[bool] = None
+    # 베팅 후 채워지는 CLV (Pinnacle 종료 배당 대비)
+    clv_pct: Optional[float] = None
+    beat_closing: Optional[bool] = None
 
 
 def _jsonable(value: Any) -> Any:
@@ -98,6 +107,34 @@ def build_snapshot(
     return snap
 
 
+def snapshot_from_pick(
+    pick: PickAnalysis,
+    match_features: MatchFeatures,
+    *,
+    captured_at: Optional[datetime] = None,
+) -> PickInputSnapshot:
+    """분석 결과(PickAnalysis) + feature 입력을 합쳐 로그 스냅샷 생성.
+
+    Pinnacle 기준 공정확률·edge·EV·value 점수까지 함께 남겨, 어떤 변수가 실제
+    적중에 기여했는지 사후 검증 가능하게 한다.
+    """
+    snap = build_snapshot(
+        pick_id=f"{pick.match_id}:{pick.outcome.value}",
+        match_id=pick.match_id,
+        sport=match_features.sport,
+        market=pick.market,
+        outcome=pick.outcome,
+        betman_odds=pick.betman_odds,
+        match_features=match_features,
+        captured_at=captured_at,
+    )
+    snap.fair_prob = pick.fair_prob
+    snap.edge_pct = pick.edge_pct
+    snap.expected_value = pick.expected_value
+    snap.value_score = pick.value_score
+    return snap
+
+
 class JsonlPickLogger:
     """픽 스냅샷을 JSONL 파일에 누적. 결과는 별도 라인으로 append."""
 
@@ -116,6 +153,18 @@ class JsonlPickLogger:
             "pick_id": pick_id,
             "result_outcome": result_outcome.value,
             "hit": hit,
+            "recorded_at": datetime.now().isoformat(),
+        }
+        with self.path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def log_clv(self, pick_id: str, clv_pct: float, beat_closing: bool) -> None:
+        """베팅 후 CLV(클로징 라인 밸류) 기록 — Pinnacle 종료 배당 대비."""
+        record = {
+            "type": "clv",
+            "pick_id": pick_id,
+            "clv_pct": clv_pct,
+            "beat_closing": beat_closing,
             "recorded_at": datetime.now().isoformat(),
         }
         with self.path.open("a", encoding="utf-8") as fh:

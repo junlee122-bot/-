@@ -83,6 +83,10 @@ class RecordSplit:
     def diff_per_game(self) -> float:
         return (self.scored - self.conceded) / self.games if self.games else 0.0
 
+    @property
+    def win_rate(self) -> float:
+        return self.wins / self.games if self.games else 0.0
+
 
 @dataclass(frozen=True)
 class HeadToHead:
