@@ -52,9 +52,15 @@ def build_collectors(config: AppConfig) -> CollectorSet:
     # 통계 feature 는 항상 mock (실 API 부재)
     features = MockFeatureCollector()
 
-    # 베트맨 발매: BETMAN_SOURCE=csv 면 수동 입력 CSV/JSON, 아니면 mock
+    # 베트맨 발매: BETMAN_SOURCE = supabase(웹 입력) | csv(파일) | mock
     betman: BetmanCollector
-    if (os.environ.get("BETMAN_SOURCE") or "").lower() == "csv":
+    betman_src = (os.environ.get("BETMAN_SOURCE") or "").lower()
+    if betman_src == "supabase":
+        from .live.betman_supabase import BetmanSupabaseCollector
+
+        betman = BetmanSupabaseCollector(round_no=os.environ.get("BETMAN_ROUND"))
+        notes.append("베트맨 발매: Supabase 수동입력(betman_manual_odds) | 통계: mock")
+    elif betman_src == "csv":
         from .live.betman_csv import BetmanCsvCollector
 
         src_dir = os.environ.get("BETMAN_DIR", "data/betman")

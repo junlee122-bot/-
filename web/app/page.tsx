@@ -15,6 +15,10 @@ export default async function Home() {
       <h1>Betman Value Analyzer</h1>
       <p className="subtitle">
         Pinnacle 기준 공정확률 대비 베트맨 고정배당을 비교해 줄 세운 분석 보조
+        {"  "}
+        <a href="/betman" style={{ color: "var(--accent)" }}>
+          · 베트맨 발매표 입력 →
+        </a>
       </p>
 
       <div className="banner">

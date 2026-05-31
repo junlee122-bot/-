@@ -127,6 +127,24 @@ create table if not exists bets (
     payout_krw  integer
 );
 
+-- 베트맨 수동 입력 발매 배당 (대시보드 붙여넣기 → 파이프라인이 팀명 매칭) ---
+-- 웹에서 붙여넣은 시점엔 The Odds API match_id 를 모르므로 FK 없이 팀명으로
+-- 저장한다. run_full_pipeline 이 팀명(aliases)으로 실제 경기와 매칭한다.
+create table if not exists betman_manual_odds (
+    id          bigserial primary key,
+    round_no    text,
+    sport       text not null,            -- soccer|baseball|basketball|...
+    home        text not null,            -- 베트맨 표기(한글 가능)
+    away        text not null,
+    outcome     text not null,            -- home|draw|away
+    odds        numeric not null,
+    game_no     text,                     -- 베트맨 게임번호(참고)
+    sales_open  boolean default true,
+    created_at  timestamptz not null default now(),
+    unique (round_no, sport, home, away, outcome)
+);
+create index if not exists idx_manual_round on betman_manual_odds (round_no);
+
 -- 비고: service_role 키는 RLS를 우회한다. anon 키로도 접근하게 하려면 RLS와
 -- 정책을 명시적으로 추가할 것(기본은 service_role 전용으로 두는 게 안전).
 -- 대시보드(Next.js)는 서버 컴포넌트에서 service_role 키로 읽으므로 키가
