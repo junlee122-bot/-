@@ -89,23 +89,46 @@
         ├── config.py              # 환급률·발매종목·예산 등 설정
         ├── domain/
         │   ├── enums.py           # Sport, MarketType, Outcome ...
-        │   └── models.py          # 종목 공통 정규화 데이터 모델
+        │   ├── models.py          # 종목 공통 정규화 데이터 모델
+        │   └── features.py        # 종목별 예측 변수 스키마(Feature 래퍼)
         ├── collection/
-        │   ├── base.py            # 수집 인터페이스(ABC)
-        │   ├── normalizer.py      # 정규화 헬퍼
-        │   ├── pipeline.py        # 4개 수집기 → NormalizedMatchBundle
+        │   ├── base.py            # 수집 인터페이스(ABC) — 5개 수집기
+        │   ├── pipeline.py        # 수집기 → NormalizedMatchBundle
         │   └── mock/              # 무료 프로토타입용 mock 구현
         │       ├── mock_match.py
         │       ├── mock_odds.py
         │       ├── mock_betman.py
-        │       └── mock_news.py
+        │       ├── mock_news.py
+        │       └── mock_features.py   # 종목별 예측 변수 생성
         ├── storage/
         │   └── base.py            # 저장소 인터페이스 (다음 단계)
         ├── analysis/
-        │   └── base.py            # 분석 인터페이스 (다음 단계)
+        │   ├── base.py            # 분석 인터페이스 (de-vig/EV/value)
+        │   ├── weights.py         # 종목별 feature 가중치 레지스트리
+        │   └── provenance.py      # 픽별 입력/결과 로깅 (사후 검증)
         └── output/
             └── base.py            # 출력/대시보드 인터페이스 (다음 단계)
 ```
+
+### 예측 변수(feature) 스키마
+
+세 종목(축구/야구/농구, 해외 포함)의 예측 변수는 `domain/features.py` 에서
+`Feature[T]` 래퍼로 정규화한다. 핵심 원칙:
+
+- **결측 명시**: 값을 모르면 0으로 뭉개지 않고 `Feature.missing`(`present=False`).
+- **항목별 가중치 분리**: feature마다 이름을 가져, `analysis/weights.py` 에서
+  가중치를 따로 부여 → value 점수 모델을 **종목별로 분리·캘리브레이션**.
+- **종목별 핵심 변수에 최고 가중치**: 축구=xG·확정라인업, 야구=선발투수,
+  농구=휴식(백투백)·스타결장.
+- **비정형은 보조 가중치로만**: 부상 뉴스/분석글은 LLM이 해당 플래그(예:
+  "주전 공격수 결장", "백투백")로 환산해 보조 반영(3단계).
+- **사후 검증 로깅**: `analysis/provenance.py` 가 픽별로 사용한 입력값(+가중치,
+  결측 여부)과 경기 결과를 JSONL로 남겨 백테스트/재캘리브레이션에 사용.
+
+| 구분 | 공통(3종목) | 축구 | 야구 | 농구 |
+|------|------------|------|------|------|
+| 핵심 | 최근폼/H2H/일정/라인무브먼트/부상 | **xG·xGA, 확정라인업** | **선발투수(ERA/FIP/WHIP)** | **휴식·백투백, 스타결장** |
+| 보조 | 동기(순위·잔여일정)·더비 | 세트피스·슈팅·심판·날씨·무승부경향·리그정규화 | 불펜피로·좌우스플릿·파크팩터·바람 | 페이스·공수효율·매치업·홈코트 |
 
 ---
 
@@ -113,6 +136,8 @@
 
 - [x] **0단계** — 폴더 구조 + 4개 레이어 모듈 인터페이스 설계
 - [x] **1단계** — 데이터 수집 레이어 (인터페이스 + mock 구현 + 정규화 파이프라인)
+- [x] **1.5단계** — 종목별 예측 변수 수집·정규화 (Feature 스키마 + 가중치
+  레지스트리 + 픽별 입력/결과 로깅)
 - [ ] **2단계** — 저장 레이어 (SQLite, 과거 전적 누적)
 - [ ] **3단계** — 분석 레이어 (de-vig / EV / value 점수 / LLM 신호)
 - [ ] **4단계** — 출력 레이어 (웹 대시보드 + 예산 관리)
