@@ -34,11 +34,43 @@ The Odds API 경기와 잇는 키가 팀명뿐이라, **영문 팀명을 그대�
 { "삼성 라이온즈": "Samsung Lions", "두산 베어스": "Doosan Bears" }
 ```
 
-## 사용
+## ⚡ 빠른 입력: 붙여넣기 파서 (권장)
+
+CSV를 한 줄씩 손으로 적지 말고, **베트맨 발매 화면에서 텍스트를 드래그·복사**해
+붙여넣으면 자동으로 CSV가 만들어집니다.
 
 ```bash
-# 발매표를 data/betman/round_2610.csv 로 저장한 뒤
-DATA_SOURCE_MODE=live BETMAN_SOURCE=csv python -m scripts.run_full_pipeline
+python -m scripts.betman_paste --round 2610 --sport baseball
+# → 붙여넣고 Ctrl-D. 파싱 결과 미리보기 후 y 로 저장.
 ```
 
-`round_example.csv` 를 복사해 시작하세요.
+여러 종목을 한 회차 파일에 모으려면 `--append`:
+
+```bash
+python -m scripts.betman_paste --round 2610 --sport soccer --append
+```
+
+**인식하는 형식**(섞여 있어도 됨):
+- `삼성 라이온즈 1.95 두산 베어스 1.78`  (팀-배당-팀-배당)
+- `삼성 라이온즈 vs 두산 베어스 1.95 1.78`  (vs 구분)
+- `Arsenal 1.95 3.60 4.10 Chelsea`  (배당 3개 = 축구 승무패)
+- 여러 줄(팀/배당 줄바꿈)도 인식. 경기 사이는 **빈 줄**로 구분하면 가장 정확.
+
+배당 개수로 종목을 자동 판별합니다(2개=승패, 3개=승무패). 한글 팀명은
+`aliases.json` 으로 영문 변환되어 The Odds API 경기와 매칭됩니다. 미인식 블록은
+표에 따로 표시되니 그것만 수동 보정하세요.
+
+## 효율적인 수기 입력 요령
+
+1. 베트맨 **발매중 게임** 화면에서 한 종목씩 표 영역을 드래그·복사
+2. `betman_paste` 에 붙여넣기 → 미리보기로 팀명/배당 확인
+3. 영문 매칭 안 된 팀이 있으면 `aliases.json` 에 한 줄 추가 후 재실행
+4. 다음 종목은 `--append` 로 같은 회차 파일에 누적
+
+## 수동 편집 (대안)
+
+`round_example.csv` 를 복사해 직접 편집해도 됩니다. 저장 후:
+
+```bash
+DATA_SOURCE_MODE=live BETMAN_SOURCE=csv python -m scripts.run_full_pipeline
+```
