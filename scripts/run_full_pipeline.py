@@ -28,7 +28,11 @@ def pick_to_row(pick, bundle) -> dict:
     """PickAnalysis → picks 테이블 행 (대시보드 표시용 비정규화 포함)."""
     m = bundle.match
     return {
-        "pick_id": f"{pick.match_id}:{pick.outcome.value}",
+        # 마켓·라인까지 포함해 고유 키 생성(1X2 home 과 핸디캡 home 충돌 방지)
+        "pick_id": (
+            f"{pick.match_id}:{pick.market.value}"
+            f":{pick.line if pick.line is not None else ''}:{pick.outcome.value}"
+        ),
         "match_id": pick.match_id,
         "sport": m.sport.value,
         "league": m.league,
@@ -45,6 +49,8 @@ def pick_to_row(pick, bundle) -> dict:
         "expected_value": pick.expected_value,
         "value_score": pick.value_score,
         "mean_reversion": pick.mean_reversion,
+        "line": pick.line,
+        "model_based": pick.model_based,
         "is_core": m.sport.is_core,
         "notes": list(pick.notes),
         "signals": [

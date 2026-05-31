@@ -87,6 +87,8 @@ create table if not exists picks (
     expected_value      numeric,             -- 보통 음수 (환급률 63%)
     value_score         numeric,
     mean_reversion      boolean default false,
+    line                numeric,             -- 핸디캡/언오버 기준점
+    model_based         boolean default false,  -- 포아송 추정 마켓
     is_core             boolean default false,
     notes               jsonb,
     signals             jsonb,               -- 근거 비정형 신호

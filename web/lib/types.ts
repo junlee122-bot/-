@@ -17,6 +17,8 @@ export interface Pick {
   expected_value: number; // 보통 음수 (환급률 63%)
   value_score: number;
   mean_reversion: boolean;
+  line: number | null;
+  model_based: boolean;
   is_core: boolean;
   notes: string[] | null;
   signals: { polarity: string; confidence: number; summary: string }[] | null;
