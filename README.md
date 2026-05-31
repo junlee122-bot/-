@@ -138,6 +138,34 @@ mock 수집기가 축구·야구·농구 등 경기를 생성하고, 분석 레�
 공정확률·edge·EV·value 점수를 계산해 종목별로 줄 세웁니다. 결과는
 `data/analysis_log.jsonl` 에 픽별 입력/분석/CLV 로그로 누적됩니다.
 
+### 데이터 소스: mock ↔ live
+
+`DATA_SOURCE_MODE` 로 전환합니다 (`collection/sources.py` 팩토리).
+
+| 데이터 | mock | live |
+|--------|------|------|
+| 해외 배당 + 경기 | mock | **The Odds API** (eu 리전, Pinnacle 포함) |
+| 뉴스(비정형) | mock | **RSS 피드** (`RSS_FEEDS_<SPORT>`) |
+| 베트맨 발매·고정배당 | mock | mock (공개 API 없음) |
+| 정형 통계(xG/ERA 등) | mock | mock (별도 통계 API 필요) |
+
+```bash
+# .env 설정 후 (.env.example 참고)
+#   DATA_SOURCE_MODE=live
+#   ODDS_API_KEY=...           # the-odds-api.com 무료 티어(월 500요청)
+#   RSS_FEEDS_BASEBALL=https://feed/rss,...   (선택)
+python -m scripts.run_full_pipeline
+```
+
+> ⚠️ **정직성/한계**: live 라도 **베트맨 고정배당과 정형 통계는 공개 API가 없어
+> mock**입니다. 즉 live = 실제 해외배당(Pinnacle de-vig) + 실제 뉴스 +
+> mock(베트맨/통계). 따라서 live 결과에서 보이는 **양수 edge 는 실제 가치가 아니라
+> mock 베트맨 배당 vs 실제 Pinnacle 확률의 불일치에서 생긴 허상**입니다. 실제
+> 베트맨 발매 배당을 연결하기 전까지는 "구조 검증용"으로만 보세요. The Odds API
+> 무료 티어는 쿼터 절약을 위해 **종목당 1회 호출 후 캐시**하며, 미설정/실패 시
+> 자동으로 mock 으로 폴백합니다. 현재 The Odds API 커버리지: KBO·NPB·MLB(야구),
+> J리그 등(축구), NHL(하키). KBL·K리그1·V리그·LCK 는 미지원(→ 해당 종목은 mock).
+
 ---
 
 ## 저장 레이어 (Supabase)
