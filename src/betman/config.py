@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from . import env
 from .domain.enums import Sport
 
 
@@ -45,3 +46,31 @@ class AppConfig:
 
 
 DEFAULT_CONFIG = AppConfig()
+
+
+@dataclass
+class SupabaseSettings:
+    """Supabase 접속 설정. 값은 환경변수/.env 에서만 읽는다 (코드에 비밀키 금지)."""
+
+    url: str | None = None
+    service_role_key: str | None = None
+    anon_key: str | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.url and (self.service_role_key or self.anon_key))
+
+    @property
+    def write_key(self) -> str | None:
+        """쓰기/적재용 키 (service_role 우선, 없으면 anon)."""
+        return self.service_role_key or self.anon_key
+
+
+def load_supabase_settings() -> SupabaseSettings:
+    """.env 를 로드한 뒤 환경변수에서 Supabase 설정을 읽어온다."""
+    env.load_dotenv()
+    return SupabaseSettings(
+        url=env.get("SUPABASE_URL"),
+        service_role_key=env.get("SUPABASE_SERVICE_ROLE_KEY"),
+        anon_key=env.get("SUPABASE_ANON_KEY"),
+    )

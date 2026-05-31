@@ -2,8 +2,8 @@
 # 아래는 이후 단계(저장/분석/출력)에서 사용할 예정인 의존성입니다.
 # 지금 단계에서 반드시 설치할 필요는 없습니다.
 
-# --- 2단계 저장 (예정) ---
-# SQLAlchemy>=2.0
+# --- 2단계 저장: Supabase(Postgres) via PostgREST ---
+httpx>=0.27            # Supabase REST 호출 (저장 레이어)
 
 # --- 3단계 분석: LLM 감성분류 (예정) ---
 # anthropic>=0.40        # 비정형 → 긍정/부정 신호 플래그
@@ -14,4 +14,4 @@
 # jinja2>=3.1
 
 # --- 실제 유료 데이터로 교체 시 (예정) ---
-# httpx>=0.27            # The Odds API / 통계 API / 뉴스 API 호출
+# (httpx 는 위에서 이미 설치됨 — The Odds API / 통계 API / 뉴스 API 호출에 재사용)

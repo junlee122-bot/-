@@ -138,7 +138,7 @@
 - [x] **1단계** — 데이터 수집 레이어 (인터페이스 + mock 구현 + 정규화 파이프라인)
 - [x] **1.5단계** — 종목별 예측 변수 수집·정규화 (Feature 스키마 + 가중치
   레지스트리 + 픽별 입력/결과 로깅)
-- [ ] **2단계** — 저장 레이어 (SQLite, 과거 전적 누적)
+- [x] **2단계** — 저장 레이어 (Supabase/Postgres, 경기·배당·전적·픽로그 누적)
 - [ ] **3단계** — 분석 레이어 (de-vig / EV / value 점수 / LLM 신호)
 - [ ] **4단계** — 출력 레이어 (웹 대시보드 + 예산 관리)
 
@@ -150,6 +150,38 @@
 pip install -r requirements.txt        # 1단계는 표준 라이브러리만으로도 동작
 python -m scripts.run_collection
 ```
+
+## 저장 레이어 (Supabase)
+
+과거 회차·경기 통계, 팀별 홈/원정 전적, 픽 입력/결과 로그를 Supabase(Postgres)에
+누적합니다. PostgREST REST API + service_role 키를 사용합니다.
+
+**1) 스키마 생성 (최초 1회)**: Supabase 대시보드 → SQL Editor 에서 `schema.sql`
+전체를 실행합니다. (REST API로는 DDL(CREATE TABLE)이 불가하여 1회 수동 실행 필요.)
+
+**2) 키 설정**: `.env.example` 을 `.env` 로 복사해 채웁니다. `.env` 는 `.gitignore`
+되므로 커밋되지 않습니다.
+
+```bash
+cp .env.example .env
+# .env 편집:
+#   SUPABASE_URL=https://<ref>.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY=<service_role_jwt>   # 서버 사이드 전용, 노출 금지
+```
+
+**3) 점검/스모크 테스트** (네트워크가 열린 환경에서):
+
+```bash
+pip install -r requirements.txt        # httpx
+python -m scripts.init_supabase
+```
+
+연결 확인 → mock 경기 수집 → 저장 → 팀 전적 upsert/조회 → 픽 스냅샷 저장/조회.
+
+> ⚠️ 보안: `service_role` 키는 RLS를 우회하므로 **서버 사이드에서만** 사용하고,
+> 코드·커밋·클라이언트에 절대 포함하지 않습니다. 비밀키는 `.env`(환경변수)로만
+> 주입합니다. 테이블: teams / matches / betman_offerings / overseas_odds /
+> team_records / pick_logs.
 
 mock 수집기가 축구·야구·농구·배구 경기를 생성하고, 해외 배당/베트맨 배당/뉴스를
 종목 공통 포맷으로 정규화한 뒤 요약을 출력합니다.
