@@ -16,12 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from betman.config import DEFAULT_CONFIG, load_supabase_settings  # noqa: E402
-from betman.collection.mock.mock_betman import MockBetmanCollector  # noqa: E402
-from betman.collection.mock.mock_features import MockFeatureCollector  # noqa: E402
-from betman.collection.mock.mock_match import MockMatchCollector  # noqa: E402
-from betman.collection.mock.mock_news import MockNewsCollector  # noqa: E402
-from betman.collection.mock.mock_odds import MockOddsCollector  # noqa: E402
+from betman.config import load_app_config, load_supabase_settings  # noqa: E402
+from betman.collection.sources import build_collectors  # noqa: E402
 from betman.collection.pipeline import DataCollectionPipeline  # noqa: E402
 from betman.domain.models import CollectionRequest  # noqa: E402
 from betman.analysis.value import DefaultValueAnalyzer  # noqa: E402
@@ -75,13 +71,19 @@ def main() -> int:
         print(f"✗ 저장소 초기화 실패: {e}")
         return 1
 
-    # 1) 수집
+    # 1) 수집 (mock/live 는 DATA_SOURCE_MODE 로 선택)
+    config = load_app_config()
+    cs = build_collectors(config)
+    print(f"• 데이터 소스 모드: {config.data_source_mode}")
+    for n in cs.notes:
+        print(f"    - {n}")
     pipeline = DataCollectionPipeline(
-        MockMatchCollector(), MockOddsCollector(), MockBetmanCollector(),
-        MockNewsCollector(), MockFeatureCollector(),
+        cs.match, cs.odds, cs.betman, cs.news, cs.features,
     )
+    # live: 실제 발매일(오늘) 기준, mock: 데모 고정일
+    target = date.today() if config.data_source_mode == "live" else date(2026, 6, 1)
     bundles = pipeline.run(
-        CollectionRequest(sports=DEFAULT_CONFIG.sports, target_date=date(2026, 6, 1))
+        CollectionRequest(sports=config.sports, target_date=target)
     )
     print(f"• 수집: {len(bundles)}경기")
 

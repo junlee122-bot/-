@@ -41,11 +41,86 @@ class AppConfig:
     monthly_budget_krw: int | None = None
 
     # 데이터 소스 모드: "mock" | "live"
-    # live로 바꾸면 collection 레이어가 유료 API 구현으로 교체된다.
+    # live로 바꾸면 해외 배당=The Odds API, 뉴스=RSS 로 교체된다.
+    # (베트맨 발매·정형 통계는 실 API가 없어 mock 유지 — 어댑터 docstring 참고)
     data_source_mode: str = "mock"
 
 
 DEFAULT_CONFIG = AppConfig()
+
+
+def load_app_config() -> AppConfig:
+    """기본 설정에 .env 의 DATA_SOURCE_MODE 를 반영해 반환."""
+    env.load_dotenv()
+    cfg = AppConfig()
+    mode = env.get("DATA_SOURCE_MODE")
+    if mode in ("mock", "live"):
+        cfg.data_source_mode = mode
+    return cfg
+
+
+# --------------------------------------------------------------------------- #
+# The Odds API (해외 배당, 무료 티어 월 500요청) 설정
+# --------------------------------------------------------------------------- #
+# 우리 Sport enum → The Odds API sport key 목록 (여러 리그 합산 가능).
+# /v4/sports 응답 기준. 시즌/커버리지에 따라 비활성일 수 있음(그 종목은 0건).
+ODDS_API_SPORT_KEYS: dict[Sport, list[str]] = {
+    Sport.SOCCER: [
+        "soccer_japan_j_league",
+        "soccer_epl",
+        "soccer_spain_la_liga",
+        "soccer_italy_serie_a",
+    ],
+    Sport.BASEBALL: ["baseball_kbo", "baseball_mlb", "baseball_npb"],
+    Sport.BASKETBALL: ["basketball_nba"],
+    # 아래는 The Odds API 미지원/불안정 → 라이브에서 빈 결과(=mock 폴백 권장)
+    Sport.VOLLEYBALL: [],
+    Sport.HOCKEY: ["icehockey_nhl"],
+    Sport.ESPORTS: [],
+}
+
+
+@dataclass
+class OddsApiSettings:
+    api_key: str | None = None
+    # eu 리전에 Pinnacle이 포함됨 (샤프 기준선). us 추가 시 미국 북 다수.
+    regions: str = "eu"
+    cache_ttl_sec: int = 600          # 같은 종목 재호출 캐시(쿼터 절약)
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key)
+
+
+@dataclass
+class RssSettings:
+    # 종목별 RSS 피드 URL. 정식/허용된 피드만 사용(무단 스크래핑 금지).
+    # 기본은 비워두고 .env 또는 코드에서 주입 (피드 URL은 환경마다 다름).
+    feeds: dict[Sport, list[str]] = field(default_factory=dict)
+    timeout_sec: int = 10
+    max_items_per_feed: int = 50
+
+
+def load_odds_api_settings() -> OddsApiSettings:
+    env.load_dotenv()
+    return OddsApiSettings(
+        api_key=env.get("ODDS_API_KEY"),
+        regions=env.get("ODDS_API_REGIONS", "eu") or "eu",
+    )
+
+
+def load_rss_settings() -> RssSettings:
+    """RSS 피드를 .env 의 RSS_FEEDS_<SPORT> (콤마 구분) 에서 읽는다.
+
+    예) RSS_FEEDS_BASEBALL=https://a/rss,https://b/rss
+    """
+    env.load_dotenv()
+    feeds: dict[Sport, list[str]] = {}
+    for sport in Sport:
+        raw = env.get(f"RSS_FEEDS_{sport.name}")
+        if raw:
+            feeds[sport] = [u.strip() for u in raw.split(",") if u.strip()]
+    return RssSettings(feeds=feeds)
 
 
 @dataclass
