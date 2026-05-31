@@ -25,7 +25,8 @@
    Supabase(Postgres).
 3. **분석(analysis)** — Pinnacle 샤프 기준선 de-vig → 공정 확률 → edge%/EV(63% 반영)
    → 종목별 value 점수 → Elo·평균회귀·라인무브먼트·CLV → LLM 비정형 신호(보조).
-4. **출력(output)** — 웹 대시보드(예정) + 예산 관리.
+4. **출력(output)** — Next.js 웹 대시보드(`web/`, Vercel `bet` 프로젝트) + 예산 관리.
+   Python 분석 결과를 Supabase `picks` 에 적재 → 대시보드가 읽어 종목별 표시.
 
 ---
 
@@ -38,7 +39,8 @@
 - [x] **2단계** — 저장 레이어 (Supabase/Postgres, 경기·배당·전적·픽로그 누적)
 - [x] **3단계** — 분석 레이어 (Pinnacle de-vig / edge% / EV / 종목별 value /
   Elo / 평균회귀 / 라인무브먼트·CLV / LLM 신호)
-- [ ] **4단계** — 출력 레이어 (웹 대시보드 + 예산 관리)
+- [x] **4단계** — 출력 레이어 (Next.js 웹 대시보드 `web/`, Vercel `bet` 프로젝트
+  배포용. 예산 관리: 한도 없음/기록만)
 
 ---
 

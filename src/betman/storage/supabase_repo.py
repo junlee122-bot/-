@@ -186,6 +186,12 @@ class SupabaseMatchRepository(MatchRepository, PickLogRepository):
     # ------------------------------------------------------------------ #
     # PickLogRepository
     # ------------------------------------------------------------------ #
+    def save_picks(self, rows: list[dict]) -> None:
+        """분석 결과 픽(대시보드 표시용)을 picks 테이블에 upsert."""
+        self._upsert(
+            "picks", [_jsonable(r) for r in rows], on_conflict="pick_id"
+        )
+
     def save_pick_snapshot(self, snapshot: dict) -> None:
         self._upsert("pick_logs", [_jsonable(snapshot)], on_conflict="pick_id")
 
