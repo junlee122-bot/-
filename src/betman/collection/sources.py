@@ -11,6 +11,7 @@ The Odds API 가 미설정/실패하면 자동으로 mock 으로 폴백한다.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from ..config import (
@@ -18,6 +19,7 @@ from ..config import (
     load_odds_api_settings,
     load_rss_settings,
 )
+from .. import env
 from .base import (
     BetmanCollector,
     FeatureCollector,
@@ -45,11 +47,22 @@ class CollectorSet:
 def build_collectors(config: AppConfig) -> CollectorSet:
     """config.data_source_mode 에 따라 5개 수집기를 조립."""
     notes: list[str] = []
+    env.load_dotenv()
 
-    # 베트맨/통계는 항상 mock (실 API 부재)
-    betman = MockBetmanCollector()
+    # 통계 feature 는 항상 mock (실 API 부재)
     features = MockFeatureCollector()
-    notes.append("베트맨 발매/통계 feature: mock (공개 API 없음)")
+
+    # 베트맨 발매: BETMAN_SOURCE=csv 면 수동 입력 CSV/JSON, 아니면 mock
+    betman: BetmanCollector
+    if (os.environ.get("BETMAN_SOURCE") or "").lower() == "csv":
+        from .live.betman_csv import BetmanCsvCollector
+
+        src_dir = os.environ.get("BETMAN_DIR", "data/betman")
+        betman = BetmanCsvCollector(source_dir=src_dir)
+        notes.append(f"베트맨 발매: CSV 수동 입력 ({src_dir}) | 통계: mock")
+    else:
+        betman = MockBetmanCollector()
+        notes.append("베트맨 발매/통계 feature: mock (공개 API 없음)")
 
     if config.data_source_mode != "live":
         notes.append("모드=mock: 전 수집기 mock")
