@@ -23,8 +23,10 @@ from ..domain.models import NormalizedMatchBundle, SentimentFlag
 from ..domain.enums import MarketType
 from .base import PickAnalysis, SentimentClassifier, ValueAnalyzer
 from .derived import (
+    LEAGUE_TOTAL_HINT,
     handicap_probs,
     infer_goal_model,
+    infer_goal_model_2way,
     sum_oddeven_probs,
     totals_probs,
 )
@@ -160,13 +162,22 @@ class DefaultValueAnalyzer(ValueAnalyzer):
             return []
 
         # 파생 마켓(핸디캡/언오버/SUM)용 포아송 득점 모델 역산.
-        # 1X2(축구·하키) 공정확률에서만 유도 가능. 2갈래 종목은 None.
+        #  - 3갈래(축구·하키): 1X2 공정확률로 λ 직접 역산
+        #  - 야구: 머니라인(2갈래) + 리그 평균 총득점 힌트로 λ 역산
+        #  - 농구: 점수 스케일이 커 포아송 부적합 → 미지원(None)
         goal_model = None
         if sport.has_draw:
             goal_model = infer_goal_model(
                 fair.fair_probs.get(Outcome.HOME, 0.0),
                 fair.fair_probs.get(Outcome.DRAW, 0.0),
                 fair.fair_probs.get(Outcome.AWAY, 0.0),
+            )
+        elif sport == Sport.BASEBALL:
+            hint = LEAGUE_TOTAL_HINT.get("baseball", 9.0)
+            goal_model = infer_goal_model_2way(
+                fair.fair_probs.get(Outcome.HOME, 0.0),
+                fair.fair_probs.get(Outcome.AWAY, 0.0),
+                hint,
             )
 
         # 3) Elo 확률 (블렌딩용)

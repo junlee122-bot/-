@@ -43,11 +43,11 @@ def _pois_pmf(k: int, lam: float) -> float:
     return math.exp(-lam) * lam**k / math.factorial(k)
 
 
-def _score_grid(model: GoalModel) -> list[list[float]]:
+def _score_grid(model: GoalModel, max_goals: int = _MAX_GOALS) -> list[list[float]]:
     """P(home=i, away=j) 격자 (독립 포아송)."""
-    ph = [_pois_pmf(i, model.lam_home) for i in range(_MAX_GOALS + 1)]
-    pa = [_pois_pmf(j, model.lam_away) for j in range(_MAX_GOALS + 1)]
-    return [[ph[i] * pa[j] for j in range(_MAX_GOALS + 1)] for i in range(_MAX_GOALS + 1)]
+    ph = [_pois_pmf(i, model.lam_home) for i in range(max_goals + 1)]
+    pa = [_pois_pmf(j, model.lam_away) for j in range(max_goals + 1)]
+    return [[ph[i] * pa[j] for j in range(max_goals + 1)] for i in range(max_goals + 1)]
 
 
 def infer_goal_model(
@@ -99,19 +99,83 @@ def infer_goal_model(
     return GoalModel(lam_h, lam_a)
 
 
+# 종목별 리그 평균 총득점(λ_home + λ_away 힌트). 야구/농구는 핸디캡 라인 해석에
+# 쓰는 점수 스케일이 달라 별도 값. 백테스트로 갱신 가능.
+LEAGUE_TOTAL_HINT = {
+    "soccer": 2.7,
+    "hockey": 5.5,
+    "baseball": 9.0,   # 양팀 합계 평균 득점(MLB/KBO 대략)
+    "basketball": 0.0,  # 농구는 점수 스케일이 커 포아송 부적합 → 미지원
+}
+
+
+def infer_goal_model_2way(
+    p_home: float, p_away: float, total_hint: float
+) -> GoalModel | None:
+    """무승부 없는 2갈래(머니라인) → (lam_home, lam_away) 역산.
+
+    자유도가 1개(승률 1개)뿐이라 λ_home+λ_away = total_hint 로 고정하고,
+    그 제약 하에서 P(home승)이 맞도록 배분만 조정한다. 무승부(동점)는
+    승/패 확률에 비례 배분(연장 승부 가정)해 2갈래로 정규화한다.
+
+    야구처럼 득점이 큰 종목을 위해 점수 상한을 넓혀 계산한다.
+    """
+    if p_home <= 0 or p_away <= 0 or total_hint <= 0:
+        return None
+    s = p_home + p_away
+    p_home, p_away = p_home / s, p_away / s
+    cap = min(40, int(total_hint * 4) + 6)
+
+    def home_win_prob(lh: float) -> float:
+        la = total_hint - lh
+        if la <= 0.05:
+            la = 0.05
+        ph = [_pois_pmf(i, lh) for i in range(cap + 1)]
+        pa = [_pois_pmf(j, la) for j in range(cap + 1)]
+        home = away = 0.0
+        for i in range(cap + 1):
+            for j in range(cap + 1):
+                p = ph[i] * pa[j]
+                if i > j:
+                    home += p
+                elif i < j:
+                    away += p
+                # 동점은 무시(아래서 승/패로 정규화)
+        tot = home + away
+        return home / tot if tot > 0 else 0.5
+
+    # 이분 탐색으로 lam_home 찾기 (단조 증가)
+    lo, hi = 0.05, total_hint - 0.05
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if home_win_prob(mid) < p_home:
+            lo = mid
+        else:
+            hi = mid
+    lam_h = (lo + hi) / 2
+    return GoalModel(lam_h, max(0.05, total_hint - lam_h))
+
+
 # --------------------------------------------------------------------------- #
 # 파생 마켓 공정확률
 # --------------------------------------------------------------------------- #
+def _cap_for(model: GoalModel) -> int:
+    """기대득점이 클수록(야구) 점수 상한을 넓혀 꼬리 누락 방지."""
+    return min(45, int((model.lam_home + model.lam_away) * 3) + 8)
+
+
 def handicap_probs(model: GoalModel, line: float) -> dict[Outcome, float]:
     """핸디캡(홈 기준 line). 정수면 승/무/패, .5면 승/패.
 
     예: line=-1.0 → 홈 점수에 -1 적용 후 (home-1) vs away 비교.
+    야구 런라인(±1.5)처럼 .5 라인은 자동으로 승/패 2갈래가 된다.
     """
-    grid = _score_grid(model)
+    cap = _cap_for(model)
+    grid = _score_grid(model, cap)
     home = draw = away = 0.0
     is_half = abs(line - round(line)) > 1e-9
-    for i in range(_MAX_GOALS + 1):
-        for j in range(_MAX_GOALS + 1):
+    for i in range(cap + 1):
+        for j in range(cap + 1):
             p = grid[i][j]
             adj = (i + line) - j
             if adj > 0:
@@ -128,10 +192,11 @@ def handicap_probs(model: GoalModel, line: float) -> dict[Outcome, float]:
 
 def totals_probs(model: GoalModel, line: float) -> dict[Outcome, float]:
     """언더/오버. 총득점이 line 미만=under, 초과=over (정확히 같으면 푸시→제외)."""
-    grid = _score_grid(model)
+    cap = _cap_for(model)
+    grid = _score_grid(model, cap)
     under = over = 0.0
-    for i in range(_MAX_GOALS + 1):
-        for j in range(_MAX_GOALS + 1):
+    for i in range(cap + 1):
+        for j in range(cap + 1):
             total = i + j
             p = grid[i][j]
             if total < line:
@@ -147,10 +212,11 @@ def totals_probs(model: GoalModel, line: float) -> dict[Outcome, float]:
 
 def sum_oddeven_probs(model: GoalModel) -> dict[Outcome, float]:
     """총득점 홀/짝 확률."""
-    grid = _score_grid(model)
+    cap = _cap_for(model)
+    grid = _score_grid(model, cap)
     odd = even = 0.0
-    for i in range(_MAX_GOALS + 1):
-        for j in range(_MAX_GOALS + 1):
+    for i in range(cap + 1):
+        for j in range(cap + 1):
             p = grid[i][j]
             if (i + j) % 2 == 0:
                 even += p
