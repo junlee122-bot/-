@@ -34,22 +34,30 @@ class Sport(str, Enum):
 
 
 class MarketType(str, Enum):
-    """마켓(베팅 종류). 프로토 승부식은 1X2 / 머니라인이 중심."""
+    """마켓(베팅 종류). 베트맨 프로토 승부식이 발매하는 마켓 전체."""
 
     MATCH_1X2 = "match_1x2"          # 승/무/패 (축구·하키)
     MONEYLINE = "moneyline"          # 승/패 2갈래 (야구·농구·배구)
-    HANDICAP = "handicap"            # 핸디캡
-    TOTALS = "totals"                # 오버/언더
+    HANDICAP = "handicap"            # 핸디캡 (정수 라인: 승/무/패, .5 라인: 승/패)
+    TOTALS = "totals"                # 언더/오버 (라인 기준)
+    SUM = "sum"                      # 합산 홀/짝
+
+    @property
+    def needs_line(self) -> bool:
+        """라인(기준점)이 의미를 갖는 마켓인가 (핸디캡·언오버)."""
+        return self in {MarketType.HANDICAP, MarketType.TOTALS}
 
 
 class Outcome(str, Enum):
-    """마켓 내 선택지. 1X2와 머니라인을 한 체계로 표현한다."""
+    """마켓 내 선택지. 모든 마켓을 한 체계로 표현한다."""
 
-    HOME = "home"
+    HOME = "home"          # 핸디캡에선 '핸디캡 적용 후 홈 승'
     DRAW = "draw"
     AWAY = "away"
     OVER = "over"
     UNDER = "under"
+    ODD = "odd"            # SUM 홀
+    EVEN = "even"          # SUM 짝
 
 
 class MatchStatus(str, Enum):

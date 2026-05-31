@@ -106,7 +106,12 @@ class OddsQuote:
 
 @dataclass(frozen=True)
 class BetmanOffering:
-    """베트맨 발매 항목 + 고정배당. 실제 베팅 대상."""
+    """베트맨 발매 항목 + 고정배당. 실제 베팅 대상.
+
+    line: 핸디캡/언더오버의 기준점. 핸디캡은 홈 기준(예: H-1.0 → -1.0,
+    소수핸디캡 H-3.5 → -3.5). 언더오버는 총점 기준선(예: U/O 2.5 → 2.5).
+    1X2/머니라인/SUM 은 None.
+    """
 
     match_id: str
     round_no: str                 # 베트맨 회차
@@ -114,6 +119,8 @@ class BetmanOffering:
     outcome: Outcome
     fixed_odds: float
     sales_open: bool = True       # 발매 중 여부
+    line: float | None = None     # 핸디캡/언오버 기준점, 그 외 None
+    game_no: str = ""             # 베트맨 게임번호(참고)
 
 
 # --------------------------------------------------------------------------- #

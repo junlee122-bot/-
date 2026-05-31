@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { parseBetmanText, ParsedMatch } from "@/lib/betmanParse";
+import { parseBetmanText, ParsedGame } from "@/lib/betmanParse";
 
 const SPORTS = [
   { key: "soccer", label: "축구" },
@@ -17,6 +16,10 @@ const OUTCOME_LABEL: Record<string, string> = {
   home: "승",
   draw: "무",
   away: "패",
+  over: "오버",
+  under: "언더",
+  odd: "홀",
+  even: "짝",
 };
 
 export default function BetmanInput() {
@@ -26,7 +29,7 @@ export default function BetmanInput() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const matches: ParsedMatch[] = useMemo(() => {
+  const games: ParsedGame[] = useMemo(() => {
     if (!raw.trim()) return [];
     try {
       return parseBetmanText(raw);
@@ -35,7 +38,12 @@ export default function BetmanInput() {
     }
   }, [raw]);
 
-  const totalOfferings = matches.reduce((n, m) => n + m.offerings.length, 0);
+  const totalOfferings = games.reduce((n, g) => n + g.offerings.length, 0);
+  const marketCount = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const g of games) c[g.market] = (c[g.market] ?? 0) + 1;
+    return c;
+  }, [games]);
 
   async function save() {
     setMsg(null);
@@ -43,8 +51,8 @@ export default function BetmanInput() {
       setMsg({ ok: false, text: "회차를 입력하세요." });
       return;
     }
-    if (matches.length === 0) {
-      setMsg({ ok: false, text: "인식된 경기가 없습니다." });
+    if (games.length === 0) {
+      setMsg({ ok: false, text: "인식된 게임이 없습니다." });
       return;
     }
     setSaving(true);
@@ -52,7 +60,7 @@ export default function BetmanInput() {
       const res = await fetch("/api/betman", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ round_no: round.trim(), sport, matches }),
+        body: JSON.stringify({ round_no: round.trim(), sport, games }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -60,7 +68,7 @@ export default function BetmanInput() {
       } else {
         setMsg({
           ok: true,
-          text: `${data.saved}개 항목 저장됨. 다음 분석 실행 시 반영됩니다.`,
+          text: `${data.games}게임 / ${data.saved}항목 저장됨. 다음 분석 실행 시 반영됩니다.`,
         });
       }
     } catch (e) {
@@ -73,14 +81,15 @@ export default function BetmanInput() {
   return (
     <main className="container">
       <p style={{ marginBottom: 8 }}>
-        <Link href="/" style={{ color: "var(--accent)" }}>
+        <a href="/" style={{ color: "var(--accent)" }}>
           ← 대시보드로
-        </Link>
+        </a>
       </p>
       <h1>베트맨 발매표 입력</h1>
       <p className="subtitle">
-        베트맨 발매 화면을 드래그·복사해 붙여넣으면 <strong>승무패/승패</strong>{" "}
-        배당만 자동 추출합니다 (핸디캡·언오버·SUM은 제외).
+        베트맨 발매 화면을 드래그·복사해 붙여넣으면 <strong>모든 마켓</strong>
+        (승무패·핸디캡·언더오버·SUM)을 인식합니다. 핸디캡·언오버·SUM은 분석
+        단계에서 Pinnacle 1X2 → 포아송 모델로 공정확률을 계산해 평가합니다.
       </p>
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
@@ -125,41 +134,44 @@ export default function BetmanInput() {
       <div className="section" style={{ marginTop: 16 }}>
         <h2>
           미리보기
-          <span className="chip">{matches.length}경기</span>
+          <span className="chip">{games.length}게임</span>
           <span className="chip">{totalOfferings}항목</span>
+          {Object.entries(marketCount).map(([m, c]) => (
+            <span className="chip" key={m}>
+              {m} {c}
+            </span>
+          ))}
         </h2>
-        {matches.length === 0 ? (
-          <div className="empty">
-            승무패/승패 마켓이 인식되지 않았습니다. (핸디캡·언오버는 자동 제외)
-          </div>
+        {games.length === 0 ? (
+          <div className="empty">인식된 마켓이 없습니다.</div>
         ) : (
           <table>
             <thead>
               <tr>
-                <th className="left">게임번호</th>
+                <th className="left">게임</th>
                 <th className="left">경기</th>
-                <th className="left">승</th>
-                <th className="left">무</th>
-                <th className="left">패</th>
+                <th className="left">마켓</th>
+                <th className="left">배당</th>
               </tr>
             </thead>
             <tbody>
-              {matches.map((m) => {
-                const byOc = Object.fromEntries(
-                  m.offerings.map((o) => [o.outcome, o.odds])
-                );
-                return (
-                  <tr key={`${m.gameNo}:${m.home}:${m.away}`}>
-                    <td className="left muted">{m.gameNo}</td>
-                    <td className="left">
-                      {m.home} <span className="muted">vs</span> {m.away}
-                    </td>
-                    <td className="left">{byOc.home ?? "-"}</td>
-                    <td className="left">{byOc.draw ?? "-"}</td>
-                    <td className="left">{byOc.away ?? "-"}</td>
-                  </tr>
-                );
-              })}
+              {games.map((g) => (
+                <tr key={`${g.gameNo}:${g.marketLabel}`}>
+                  <td className="left muted">{g.gameNo}</td>
+                  <td className="left">
+                    {g.home} <span className="muted">vs</span> {g.away}
+                  </td>
+                  <td className="left">{g.marketLabel}</td>
+                  <td className="left">
+                    {g.offerings
+                      .map(
+                        (o) =>
+                          `${OUTCOME_LABEL[o.outcome] ?? o.outcome} ${o.odds}`
+                      )
+                      .join("  ·  ")}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         )}
@@ -173,7 +185,7 @@ export default function BetmanInput() {
 
       <button
         onClick={save}
-        disabled={saving || matches.length === 0}
+        disabled={saving || games.length === 0}
         style={{
           marginTop: 12,
           padding: "10px 20px",
@@ -182,7 +194,7 @@ export default function BetmanInput() {
           border: "none",
           borderRadius: 8,
           fontWeight: 600,
-          cursor: saving || matches.length === 0 ? "not-allowed" : "pointer",
+          cursor: saving || games.length === 0 ? "not-allowed" : "pointer",
         }}
       >
         {saving ? "저장 중…" : `Supabase에 저장 (${totalOfferings}항목)`}
@@ -190,9 +202,11 @@ export default function BetmanInput() {
 
       <div className="footer">
         <p>
-          저장된 배당은 다음 분석 실행(매일 자동 또는 수동 run_full_pipeline) 때
-          팀명으로 실제 경기와 매칭되어 edge/EV가 계산됩니다. 한글 팀명이 영문과
-          매칭되도록 <code>data/betman/aliases.json</code> 을 관리하세요.
+          같은 회차·종목을 다시 붙여넣으면 기존 입력을 <strong>교체</strong>합니다.
+          저장된 배당은 다음 분석 실행(매일 자동 또는 수동 run_full_pipeline,
+          <code> BETMAN_SOURCE=supabase</code>) 때 팀명으로 실제 경기와 매칭되어
+          edge/EV가 계산됩니다. 핸디캡·언오버·SUM은 모델 기반 추정이라 신뢰도가
+          1X2보다 낮게 반영됩니다.
         </p>
       </div>
     </main>

@@ -17,7 +17,16 @@ from ...domain.models import BetmanOffering, Match
 from ..base import BetmanCollector
 from .betman_csv import _load_aliases, _norm
 
-_OUTCOME = {"home": Outcome.HOME, "draw": Outcome.DRAW, "away": Outcome.AWAY}
+_OUTCOME = {
+    "home": Outcome.HOME, "draw": Outcome.DRAW, "away": Outcome.AWAY,
+    "over": Outcome.OVER, "under": Outcome.UNDER,
+    "odd": Outcome.ODD, "even": Outcome.EVEN,
+}
+_MARKET = {
+    "match_1x2": MarketType.MATCH_1X2, "moneyline": MarketType.MONEYLINE,
+    "handicap": MarketType.HANDICAP, "totals": MarketType.TOTALS,
+    "sum": MarketType.SUM,
+}
 
 
 class BetmanSupabaseCollector(BetmanCollector):
@@ -69,7 +78,7 @@ class BetmanSupabaseCollector(BetmanCollector):
     def collect_offerings(self, match: Match) -> list[BetmanOffering]:
         self._ensure_loaded()
         want = self._key(match.home.name, match.away.name)
-        market = (
+        default_market = (
             MarketType.MATCH_1X2 if match.sport.has_draw else MarketType.MONEYLINE
         )
         out: list[BetmanOffering] = []
@@ -81,6 +90,8 @@ class BetmanSupabaseCollector(BetmanCollector):
             oc = _OUTCOME.get(r.get("outcome", ""))
             if oc is None:
                 continue
+            market = _MARKET.get(r.get("market") or "", default_market)
+            line = r.get("line")
             out.append(
                 BetmanOffering(
                     match_id=match.id,
@@ -89,6 +100,8 @@ class BetmanSupabaseCollector(BetmanCollector):
                     outcome=oc,
                     fixed_odds=float(r["odds"]),
                     sales_open=bool(r.get("sales_open", True)),
+                    line=float(line) if line is not None else None,
+                    game_no=str(r.get("game_no", "")),
                 )
             )
         return out

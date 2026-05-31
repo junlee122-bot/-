@@ -38,6 +38,8 @@ class PickAnalysis:
     expected_value: float        # 1원당 EV (보통 음수)
     value_score: float           # 클수록 상대적으로 덜 불리 (종목별 캘리브레이션)
     mean_reversion: bool = False  # 기대지표 좋은데 최근 결과 나쁜 팀 신호
+    line: float | None = None     # 핸디캡/언오버 기준점
+    model_based: bool = False     # 파생마켓(포아송 추정) 여부 — 신뢰도 낮음
     supporting_signals: tuple[SentimentFlag, ...] = ()
     notes: tuple[str, ...] = ()
 

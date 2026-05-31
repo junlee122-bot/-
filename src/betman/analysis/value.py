@@ -20,7 +20,14 @@ from ..config import BETMAN_PAYOUT_RATE
 from ..domain.enums import Outcome, Sport
 from ..domain.features import MatchFeatures, completeness
 from ..domain.models import NormalizedMatchBundle, SentimentFlag
+from ..domain.enums import MarketType
 from .base import PickAnalysis, SentimentClassifier, ValueAnalyzer
+from .derived import (
+    handicap_probs,
+    infer_goal_model,
+    sum_oddeven_probs,
+    totals_probs,
+)
 from .devig import ProportionalDevig, compute_fair_line
 from .market import summarize_movements
 from .ratings import EloBook, win_draw_loss_probs
@@ -117,6 +124,28 @@ class DefaultValueAnalyzer(ValueAnalyzer):
         self._classifier = classifier or RuleBasedSentimentClassifier()
         self._elo = elo or EloBook()
 
+    def _fair_for(self, off, fair, goal_model) -> tuple[float, bool]:
+        """발매 항목의 공정확률과 모델기반 여부를 반환.
+
+        1X2/머니라인은 Pinnacle de-vig 직접 사용(model_based=False).
+        핸디캡/언오버/SUM은 포아송 모델 추정(model_based=True). 모델이 없으면
+        (2갈래 종목 등) 0 반환 → 호출측에서 스킵.
+        """
+        m = off.market
+        if m in (MarketType.MATCH_1X2, MarketType.MONEYLINE):
+            return fair.fair_probs.get(off.outcome, 0.0), False
+        if goal_model is None:
+            return 0.0, False  # 파생마켓인데 모델 없음 → 평가 불가
+        if m == MarketType.HANDICAP and off.line is not None:
+            probs = handicap_probs(goal_model, off.line)
+        elif m == MarketType.TOTALS and off.line is not None:
+            probs = totals_probs(goal_model, off.line)
+        elif m == MarketType.SUM:
+            probs = sum_oddeven_probs(goal_model)
+        else:
+            return 0.0, False
+        return probs.get(off.outcome, 0.0), True
+
     def analyze(self, bundle: NormalizedMatchBundle) -> list[PickAnalysis]:
         offerings = [o for o in bundle.betman_offerings if o.sales_open]
         if not offerings:
@@ -129,6 +158,16 @@ class DefaultValueAnalyzer(ValueAnalyzer):
         fair = compute_fair_line(bundle.overseas_odds, self._devig)
         if not fair.fair_probs:
             return []
+
+        # 파생 마켓(핸디캡/언오버/SUM)용 포아송 득점 모델 역산.
+        # 1X2(축구·하키) 공정확률에서만 유도 가능. 2갈래 종목은 None.
+        goal_model = None
+        if sport.has_draw:
+            goal_model = infer_goal_model(
+                fair.fair_probs.get(Outcome.HOME, 0.0),
+                fair.fair_probs.get(Outcome.DRAW, 0.0),
+                fair.fair_probs.get(Outcome.AWAY, 0.0),
+            )
 
         # 3) Elo 확률 (블렌딩용)
         elo_probs = win_draw_loss_probs(
@@ -156,14 +195,21 @@ class DefaultValueAnalyzer(ValueAnalyzer):
         picks: list[PickAnalysis] = []
         for off in offerings:
             oc = off.outcome
-            fair_p = fair.fair_probs.get(oc, 0.0)
-            consensus_p = fair.consensus_probs.get(oc, fair_p)
+
+            # 마켓별 공정확률 결정:
+            #  - 1X2/머니라인: Pinnacle de-vig 직접 사용 (가장 신뢰도 높음)
+            #  - 핸디캡/언오버/SUM: 포아송 모델 추정 (model_based=True)
+            fair_p, model_based = self._fair_for(off, fair, goal_model)
             if fair_p <= 0:
                 continue
+            consensus_p = fair.consensus_probs.get(oc, fair_p)
 
-            # 공정확률 ↔ Elo 블렌딩
-            elo_p = elo_probs.get(oc, fair_p)
-            blended_p = (1 - calib.elo_blend) * fair_p + calib.elo_blend * elo_p
+            # 공정확률 ↔ Elo 블렌딩 (1X2 선택지에만; 파생마켓은 모델값 그대로)
+            if model_based:
+                blended_p = fair_p
+            else:
+                elo_p = elo_probs.get(oc, fair_p)
+                blended_p = (1 - calib.elo_blend) * fair_p + calib.elo_blend * elo_p
 
             betman_odds = off.fixed_odds
             betman_implied = 1.0 / betman_odds if betman_odds > 0 else 0.0
@@ -185,16 +231,24 @@ class DefaultValueAnalyzer(ValueAnalyzer):
             mr = _mean_reversion_flag(bundle.features, side, sport)
             mr_adj = 0.5 if mr else 0.0
 
-            # 6) value 점수 = edge × 종목가중 × 데이터신뢰 + 보조신호 + 평균회귀
+            # 파생마켓은 모델 추정이라 신뢰도를 낮춘다(value 점수에 패널티 계수)
+            model_conf = 0.6 if model_based else 1.0
+
+            # 6) value 점수 = edge × 종목가중 × 데이터신뢰 × 모델신뢰 + 보조 + 평균회귀
             value_score = (
-                edge_pct * calib.edge_weight * (0.5 + 0.5 * data_conf)
+                edge_pct * calib.edge_weight * (0.5 + 0.5 * data_conf) * model_conf
                 + sig_adj
                 + mr_adj
             )
 
             notes: list[str] = []
             notes.append(f"기준선={fair.source}")
-            if oc in movement_by_oc:
+            if model_based:
+                lbl = off.market.value
+                if off.line is not None:
+                    lbl += f" {off.line:+g}" if off.market.value == "handicap" else f" {off.line:g}"
+                notes.append(f"모델추정({lbl})")
+            if oc in movement_by_oc and not model_based:
                 m = movement_by_oc[oc]
                 if m.steaming:
                     notes.append(f"라인 쏠림(스팀) {m.drift_pct:+.1f}%")
@@ -217,6 +271,8 @@ class DefaultValueAnalyzer(ValueAnalyzer):
                     expected_value=expected_value,
                     value_score=value_score,
                     mean_reversion=mr,
+                    line=off.line,
+                    model_based=model_based,
                     supporting_signals=used,
                     notes=tuple(notes),
                 )

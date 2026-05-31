@@ -136,14 +136,17 @@ create table if not exists betman_manual_odds (
     sport       text not null,            -- soccer|baseball|basketball|...
     home        text not null,            -- 베트맨 표기(한글 가능)
     away        text not null,
-    outcome     text not null,            -- home|draw|away
+    market      text not null default 'match_1x2',  -- match_1x2|handicap|totals|sum
+    line        numeric,                  -- 핸디캡/언오버 기준점, 그 외 null
+    outcome     text not null,            -- home|draw|away|over|under|odd|even
     odds        numeric not null,
     game_no     text,                     -- 베트맨 게임번호(참고)
     sales_open  boolean default true,
-    created_at  timestamptz not null default now(),
-    unique (round_no, sport, home, away, outcome)
+    created_at  timestamptz not null default now()
 );
 create index if not exists idx_manual_round on betman_manual_odds (round_no);
+-- 입력 워크플로: 같은 (round_no, sport) 를 다시 붙여넣으면 기존 행을 지우고
+-- 새로 넣는다(웹 API 가 delete-then-insert). 그래서 unique 제약은 두지 않는다.
 
 -- 비고: service_role 키는 RLS를 우회한다. anon 키로도 접근하게 하려면 RLS와
 -- 정책을 명시적으로 추가할 것(기본은 service_role 전용으로 두는 게 안전).
