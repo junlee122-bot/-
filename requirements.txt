@@ -2,8 +2,12 @@
 # 아래는 이후 단계(저장/분석/출력)에서 사용할 예정인 의존성입니다.
 # 지금 단계에서 반드시 설치할 필요는 없습니다.
 
-# --- 2단계 저장: Supabase(Postgres) via PostgREST ---
-httpx>=0.27            # Supabase REST 호출 (저장 레이어)
+# --- 저장: Firebase Firestore ---
+firebase-admin>=12.7   # Firestore 적재/조회 (저장 레이어)
+
+# --- 데이터 수집: 외부 API 호출 ---
+httpx>=0.27            # (구) Supabase REST / 마이그레이션 스크립트 등에서 사용
+                       # The Odds API 어댑터는 표준 urllib 사용
 
 # --- 3단계 분석: LLM 감성분류 (예정) ---
 # anthropic>=0.40        # 비정형 → 긍정/부정 신호 플래그

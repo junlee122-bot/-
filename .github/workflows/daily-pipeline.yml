@@ -32,9 +32,8 @@ jobs:
 
       - name: Run full pipeline
         env:
-          # 비밀 (Secrets)
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # 비밀 (Secrets) — Firebase 서비스계정 JSON 의 base64 문자열
+          FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
           ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
           # 비밀 아닌 설정 (Variables, 기본값 포함)
           DATA_SOURCE_MODE: ${{ vars.DATA_SOURCE_MODE || 'live' }}

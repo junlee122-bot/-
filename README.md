@@ -22,11 +22,11 @@
 1. **수집(collection)** — 정형(경기/통계/라인업/부상, 해외 배당, 베트맨 발매·고정배당)
    + 비정형(뉴스/분석글, 정식 API·피드만). 종목 공통 포맷으로 정규화.
 2. **저장(storage)** — 과거 회차·경기 통계 누적, 팀별 홈/원정 분리 전적 축적.
-   Supabase(Postgres).
+   Firebase Firestore.
 3. **분석(analysis)** — Pinnacle 샤프 기준선 de-vig → 공정 확률 → edge%/EV(63% 반영)
    → 종목별 value 점수 → Elo·평균회귀·라인무브먼트·CLV → LLM 비정형 신호(보조).
 4. **출력(output)** — Next.js 웹 대시보드(`web/`, Vercel `bet` 프로젝트) + 예산 관리.
-   Python 분석 결과를 Supabase `picks` 에 적재 → 대시보드가 읽어 종목별 표시.
+   Python 분석 결과를 Firestore `picks` 에 적재 → 대시보드가 읽어 종목별 표시.
 
 ---
 
@@ -36,7 +36,7 @@
 - [x] **1단계** — 데이터 수집 레이어 (인터페이스 + mock 구현 + 정규화 파이프라인)
 - [x] **1.5단계** — 종목별 예측 변수 수집·정규화 (Feature 스키마 + 종목별 가중치
   레지스트리 + 픽별 입력/결과 로깅)
-- [x] **2단계** — 저장 레이어 (Supabase/Postgres, 경기·배당·전적·픽로그 누적)
+- [x] **2단계** — 저장 레이어 (Firebase Firestore, 경기·배당·전적·픽로그 누적)
 - [x] **3단계** — 분석 레이어 (Pinnacle de-vig / edge% / EV / 종목별 value /
   Elo / 평균회귀 / 라인무브먼트·CLV / LLM 신호)
 - [x] **4단계** — 출력 레이어 (Next.js 웹 대시보드 `web/`, Vercel `bet` 프로젝트
@@ -48,7 +48,7 @@
 
 ```
 src/betman/
-├── config.py                 # 환급률·발매종목·예산·Supabase 설정
+├── config.py                 # 환급률·발매종목·예산·Firebase 설정
 ├── env.py                    # 의존성 없는 .env 로더
 ├── domain/
 │   ├── enums.py              # Sport, MarketType, Outcome, SignalPolarity ...
@@ -60,7 +60,7 @@ src/betman/
 │   └── mock/                 # 무료 프로토타입용 mock 구현(match/odds/betman/news/features)
 ├── storage/
 │   ├── base.py               # MatchRepository / PickLogRepository
-│   └── supabase_repo.py      # PostgREST(httpx) 기반 구현
+│   └── firestore_repo.py     # firebase-admin 기반 구현
 ├── analysis/
 │   ├── base.py               # PickAnalysis + 분석 인터페이스
 │   ├── devig.py              # Pinnacle 샤프 기준선 de-vig(비례/멱승법)
@@ -75,8 +75,8 @@ src/betman/
 scripts/
 ├── run_collection.py         # 1단계 수집 데모
 ├── run_analysis.py           # 3단계 분석 데모
-└── init_supabase.py          # 저장 레이어 점검/스모크 테스트
-schema.sql                    # Supabase 테이블 DDL
+└── init_firestore.py         # 저장 레이어 점검/스모크 테스트
+scripts/migrate_to_firestore.py  # Supabase→Firestore 데이터 이전
 ```
 
 ---
@@ -168,35 +168,44 @@ python -m scripts.run_full_pipeline
 
 ---
 
-## 저장 레이어 (Supabase)
+## 저장 레이어 (Firebase Firestore)
 
-과거 회차·경기 통계, 팀별 홈/원정 전적, 픽 입력/결과 로그를 Supabase(Postgres)에
-누적합니다. PostgREST REST API + service_role 키를 사용합니다.
+과거 회차·경기 통계, 팀별 홈/원정 전적, 픽/픽로그를 Firestore 컬렉션에
+누적합니다. Firestore 는 **스키마 생성이 불필요**합니다(컬렉션/문서는 쓰는 순간
+생성). 인증은 **서비스계정**으로 합니다.
 
-**1) 스키마 생성 (최초 1회)**: Supabase 대시보드 → SQL Editor 에서 `schema.sql`
-전체를 실행합니다. (REST API로는 DDL(CREATE TABLE)이 불가하여 1회 수동 실행 필요.)
+**1) Firebase 프로젝트 준비**: 콘솔에서 프로젝트 생성 → Firestore Database 사용
+설정(프로덕션 모드) → 프로젝트 설정 → 서비스 계정 → **새 비공개 키 생성**으로
+JSON 키 다운로드.
 
-**2) 키 설정**: `.env.example` 을 `.env` 로 복사해 채웁니다. `.env` 는 `.gitignore`
-되므로 커밋되지 않습니다.
+**2) 키 설정**: `.env.example` 을 `.env` 로 복사해 채웁니다.
 
 ```bash
 cp .env.example .env
-# .env 편집:
-#   SUPABASE_URL=https://<ref>.supabase.co
-#   SUPABASE_SERVICE_ROLE_KEY=<service_role_jwt>   # 서버 사이드 전용, 노출 금지
+# .env 편집(택1):
+#   GOOGLE_APPLICATION_CREDENTIALS=/path/service-account.json   # 로컬 권장
+#   FIREBASE_SERVICE_ACCOUNT_BASE64=<위 JSON 의 base64>          # CI/한줄
 ```
 
-**3) 점검/스모크 테스트** (네트워크가 열린 환경에서):
+**3) 점검/스모크 테스트**:
 
 ```bash
-pip install -r requirements.txt        # httpx
-python -m scripts.init_supabase
+pip install -r requirements.txt        # firebase-admin
+python -m scripts.init_firestore
 ```
 
-> ⚠️ 보안: `service_role` 키는 RLS를 우회하므로 **서버 사이드에서만** 사용하고,
-> 코드·커밋·클라이언트에 절대 포함하지 않습니다. 비밀키는 `.env`(환경변수)로만
-> 주입합니다. 테이블: teams / matches / betman_offerings / overseas_odds /
-> team_records / pick_logs.
+> ⚠️ 보안: 서비스계정 키는 **서버 사이드 전용**이며 코드·커밋·클라이언트에 절대
+> 포함하지 않습니다. `.env`(환경변수)로만 주입하고 `*service-account*.json` 등은
+> `.gitignore` 처리됩니다. 컬렉션: teams / matches / betman_offerings /
+> overseas_odds / team_records / picks / pick_logs / bets / betman_manual_odds.
+
+### Supabase → Firestore 이전 (기존 데이터 옮기기)
+
+```bash
+# .env 에 SUPABASE_*(source) + Firebase 서비스계정(target) 둘 다 설정 후
+python -m scripts.migrate_to_firestore --dry-run   # 행 수 확인
+python -m scripts.migrate_to_firestore             # 실제 복사
+```
 
 ---
 

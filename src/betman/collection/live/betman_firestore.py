@@ -1,18 +1,17 @@
-"""Supabase betman_manual_odds 테이블 → 베트맨 발매 배당 수집.
+"""Firestore betman_manual_odds 컬렉션 → 베트맨 발매 배당 수집.
 
 대시보드(/betman 페이지)에서 붙여넣어 저장한 수동 배당을 읽어, 팀명(aliases)으로
-실제 경기와 매칭한다. CSV 어댑터(betman_csv)와 같은 매칭 로직을 쓴다.
+실제 경기와 매칭한다. (Supabase 콜렉터의 Firestore 버전)
 
-웹 입력 → Supabase → (이 콜렉터) → 분석 파이프라인 으로 이어지는 경로.
+웹 입력 → Firestore → (이 콜렉터) → 분석 파이프라인.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-from ...config import SupabaseSettings, load_supabase_settings
-from ...domain.enums import MarketType, Outcome, Sport
+from ...config import FirebaseSettings, load_firebase_settings
+from ...domain.enums import MarketType, Outcome
 from ...domain.models import BetmanOffering, Match
 from ..base import BetmanCollector
 from .betman_csv import _load_aliases, _norm
@@ -29,18 +28,18 @@ _MARKET = {
 }
 
 
-class BetmanSupabaseCollector(BetmanCollector):
-    """betman_manual_odds 를 한 번 읽어 캐시하고, 경기별 팀명으로 매칭."""
+class BetmanFirestoreCollector(BetmanCollector):
+    """betman_manual_odds 컬렉션을 한 번 읽어 캐시하고, 경기별 팀명으로 매칭."""
 
     def __init__(
         self,
-        settings: SupabaseSettings | None = None,
+        settings: FirebaseSettings | None = None,
         aliases_path: str | Path | None = "data/betman/aliases.json",
         round_no: str | None = None,
     ) -> None:
-        self.settings = settings or load_supabase_settings()
+        self.settings = settings or load_firebase_settings()
         self.aliases = _load_aliases(Path(aliases_path) if aliases_path else None)
-        self.round_no = round_no          # 지정 시 해당 회차만
+        self.round_no = round_no
         self._rows: list[dict] = []
         self._loaded = False
 
@@ -50,23 +49,17 @@ class BetmanSupabaseCollector(BetmanCollector):
         self._loaded = True
         if not self.settings.configured:
             return
-        import httpx
-
-        key = self.settings.write_key
-        params = {"select": "*", "sales_open": "eq.true"}
-        if self.round_no:
-            params["round_no"] = f"eq.{self.round_no}"
         try:
-            resp = httpx.get(
-                f"{self.settings.url}/rest/v1/betman_manual_odds",
-                params=params,
-                headers={"apikey": key, "Authorization": f"Bearer {key}"},
-                timeout=30.0,
-            )
-            resp.raise_for_status()
-            self._rows = resp.json()
+            # 저장 레포가 firebase app 을 초기화하므로 재사용
+            from ...storage.firestore_repo import FirestoreMatchRepository
+
+            repo = FirestoreMatchRepository(self.settings)
+            col = repo._db.collection("betman_manual_odds")
+            query = col.where("sales_open", "==", True)
+            if self.round_no:
+                query = query.where("round_no", "==", self.round_no)
+            self._rows = [d.to_dict() for d in query.stream()]
         except Exception:
-            # 테이블이 없거나 네트워크 문제 → 빈 결과(파이프라인은 계속)
             self._rows = []
 
     def _alias(self, name: str) -> str:

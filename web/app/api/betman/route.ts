@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSupabase } from "@/lib/supabase";
+import { getDb } from "@/lib/firebase";
 import { ParsedGame } from "@/lib/betmanParse";
 
 export const runtime = "nodejs";
@@ -58,20 +58,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const supabase = getServerSupabase();
+    const db = getDb();
+    const col = db.collection("betman_manual_odds");
+
     // 같은 회차·종목을 다시 붙여넣으면 교체(기존 삭제 후 삽입)
-    const del = await supabase
-      .from("betman_manual_odds")
-      .delete()
-      .eq("round_no", round_no)
-      .eq("sport", sport);
-    if (del.error) {
-      return NextResponse.json({ error: del.error.message }, { status: 500 });
+    const existing = await col
+      .where("round_no", "==", round_no)
+      .where("sport", "==", sport)
+      .get();
+    // 삭제 + 삽입을 배치로 (Firestore 배치 한도 500)
+    let batch = db.batch();
+    let ops = 0;
+    const flush = async () => {
+      if (ops > 0) {
+        await batch.commit();
+        batch = db.batch();
+        ops = 0;
+      }
+    };
+    for (const doc of existing.docs) {
+      batch.delete(doc.ref);
+      if (++ops >= 450) await flush();
     }
-    const { error } = await supabase.from("betman_manual_odds").insert(rows);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    for (const row of rows) {
+      batch.set(col.doc(), row);
+      if (++ops >= 450) await flush();
     }
+    await flush();
+
     return NextResponse.json({ saved: rows.length, games: games.length });
   } catch (e: unknown) {
     return NextResponse.json(

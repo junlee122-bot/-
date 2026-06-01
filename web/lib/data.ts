@@ -1,4 +1,4 @@
-import { getServerSupabase } from "./supabase";
+import { getDb } from "./firebase";
 import { Pick } from "./types";
 
 export interface DashboardData {
@@ -20,23 +20,13 @@ const NOTABLE_THRESHOLD: Record<string, number> = {
 
 export async function getDashboardData(): Promise<DashboardData> {
   try {
-    const supabase = getServerSupabase();
-    const { data, error } = await supabase
-      .from("picks")
-      .select("*")
-      .order("value_score", { ascending: false });
+    const db = getDb();
+    const snap = await db
+      .collection("picks")
+      .orderBy("value_score", "desc")
+      .get();
 
-    if (error) {
-      return {
-        picksBySport: {},
-        notable: [],
-        totalPicks: 0,
-        analyzedAt: null,
-        error: error.message,
-      };
-    }
-
-    const picks = (data ?? []) as Pick[];
+    const picks = snap.docs.map((d) => d.data() as Pick);
     const picksBySport: Record<string, Pick[]> = {};
     const notable: Pick[] = [];
 
@@ -53,8 +43,9 @@ export async function getDashboardData(): Promise<DashboardData> {
       picks.length > 0
         ? picks
             .map((p) => p.analyzed_at)
+            .filter(Boolean)
             .sort()
-            .slice(-1)[0]
+            .slice(-1)[0] ?? null
         : null;
 
     return {

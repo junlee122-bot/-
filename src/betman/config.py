@@ -149,3 +149,37 @@ def load_supabase_settings() -> SupabaseSettings:
         service_role_key=env.get("SUPABASE_SERVICE_ROLE_KEY"),
         anon_key=env.get("SUPABASE_ANON_KEY"),
     )
+
+
+@dataclass
+class FirebaseSettings:
+    """Firebase(Firestore) 접속 설정.
+
+    인증은 서비스 계정으로 한다. 다음 중 하나로 지정:
+      - GOOGLE_APPLICATION_CREDENTIALS: 서비스계정 JSON '파일 경로'
+      - FIREBASE_SERVICE_ACCOUNT: 서비스계정 JSON '문자열'(CI/서버용)
+      - FIREBASE_SERVICE_ACCOUNT_BASE64: 위 JSON 의 base64 (.env 한 줄용)
+    project_id 는 보통 JSON 안에 있어 생략 가능.
+    """
+
+    project_id: str | None = None
+    credentials_path: str | None = None
+    credentials_json: str | None = None
+    credentials_b64: str | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(
+            self.credentials_path or self.credentials_json or self.credentials_b64
+        )
+
+
+def load_firebase_settings() -> FirebaseSettings:
+    env.load_dotenv()
+    return FirebaseSettings(
+        project_id=env.get("FIREBASE_PROJECT_ID"),
+        credentials_path=env.get("GOOGLE_APPLICATION_CREDENTIALS"),
+        credentials_json=env.get("FIREBASE_SERVICE_ACCOUNT"),
+        credentials_b64=env.get("FIREBASE_SERVICE_ACCOUNT_BASE64"),
+    )
+

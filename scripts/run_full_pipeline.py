@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from betman.config import load_app_config, load_supabase_settings  # noqa: E402
+from betman.config import load_app_config, load_firebase_settings  # noqa: E402
 from betman.collection.sources import build_collectors  # noqa: E402
 from betman.collection.pipeline import DataCollectionPipeline  # noqa: E402
 from betman.domain.models import CollectionRequest  # noqa: E402
@@ -65,14 +65,14 @@ def pick_to_row(pick, bundle) -> dict:
 
 
 def main() -> int:
-    settings = load_supabase_settings()
+    settings = load_firebase_settings()
     if not settings.configured:
-        print("✗ Supabase 미설정. .env 확인.")
+        print("✗ Firebase 미설정. .env 에 서비스계정 자격을 설정하세요.")
         return 1
 
     try:
-        from betman.storage.supabase_repo import SupabaseMatchRepository
-        repo = SupabaseMatchRepository(settings)
+        from betman.storage.firestore_repo import FirestoreMatchRepository
+        repo = FirestoreMatchRepository(settings)
     except Exception as e:
         print(f"✗ 저장소 초기화 실패: {e}")
         return 1
@@ -99,7 +99,6 @@ def main() -> int:
         print("• 경기/배당 적재 OK")
     except Exception as e:
         print(f"✗ 적재 실패: {e}")
-        print("  → schema.sql 을 SQL Editor 에서 먼저 실행하세요.")
         repo.close()
         return 1
 
@@ -113,8 +112,9 @@ def main() -> int:
             if b.features is not None:
                 repo.save_pick_snapshot(asdict(snapshot_from_pick(p, b.features)))
                 log_count += 1
-    repo.save_picks(pick_rows)
-    print(f"• 분석 픽 {len(pick_rows)}건 → picks 테이블 적재 OK")
+    # 기존 picks 비우고 새로 적재(대시보드는 최신 분석만 표시)
+    repo.replace_all_picks(pick_rows)
+    print(f"• 분석 픽 {len(pick_rows)}건 → picks 적재 OK (기존 교체)")
     print(f"• 픽 로그 {log_count}건 → pick_logs 적재 OK (사후 검증)")
 
     repo.close()

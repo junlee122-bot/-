@@ -55,11 +55,12 @@ def build_collectors(config: AppConfig) -> CollectorSet:
     # 베트맨 발매: BETMAN_SOURCE = supabase(웹 입력) | csv(파일) | mock
     betman: BetmanCollector
     betman_src = (os.environ.get("BETMAN_SOURCE") or "").lower()
-    if betman_src == "supabase":
-        from .live.betman_supabase import BetmanSupabaseCollector
+    if betman_src in ("firestore", "supabase"):
+        # 기본 백엔드 Firestore. (구) supabase 값도 Firestore로 처리.
+        from .live.betman_firestore import BetmanFirestoreCollector
 
-        betman = BetmanSupabaseCollector(round_no=os.environ.get("BETMAN_ROUND"))
-        notes.append("베트맨 발매: Supabase 수동입력(betman_manual_odds) | 통계: mock")
+        betman = BetmanFirestoreCollector(round_no=os.environ.get("BETMAN_ROUND"))
+        notes.append("베트맨 발매: Firestore 수동입력(betman_manual_odds) | 통계: mock")
     elif betman_src == "csv":
         from .live.betman_csv import BetmanCsvCollector
 
