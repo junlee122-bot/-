@@ -20,6 +20,9 @@ env/
 *serviceAccount*.json
 *service-account*.json
 *firebase*.json
+firebase-sa*.txt
+*.base64.txt
+*serviceAccount*.base64
 firebase-key*.json
 gcp-*.json
 data/
