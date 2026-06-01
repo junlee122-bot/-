@@ -75,14 +75,14 @@ def main() -> int:
         return 1
     base, key = sb.url.rstrip("/"), sb.write_key
 
-    db = None
+    repo = None
     if not args.dry_run:
         fb = load_firebase_settings()
         if not fb.configured:
             print("✗ Firebase 서비스계정 설정 필요(target)")
             return 1
         from betman.storage.firestore_repo import FirestoreMatchRepository
-        db = FirestoreMatchRepository(fb)._db
+        repo = FirestoreMatchRepository(fb)
 
     print(f"source(Supabase): {base}")
     print(f"target(Firestore): {'(dry-run)' if args.dry_run else 'configured'}\n")
@@ -94,24 +94,14 @@ def main() -> int:
         if args.dry_run:
             print(f"  {table:<20} {len(rows)}행")
             continue
-        # 배치 쓰기
-        for i in range(0, len(rows), 450):
-            batch = db.batch()
-            for r in rows[i:i + 450]:
-                if table == "team_records":
-                    doc_id = f"{r.get('team_id')}__{r.get('venue')}"
-                elif id_key:
-                    doc_id = str(r.get(id_key))
-                else:
-                    doc_id = None
-                ref = (
-                    db.collection(table).document(doc_id)
-                    if doc_id else db.collection(table).document()
-                )
-                # bigserial id 는 Firestore 에서 불필요 → 제거
-                r2 = {k: v for k, v in r.items() if k != "id"}
-                batch.set(ref, r2)
-            batch.commit()
+        for r in rows:
+            r2 = {k: v for k, v in r.items() if k != "id"}  # serial id 제거
+            if table == "team_records":
+                repo._set(table, f"{r.get('team_id')}__{r.get('venue')}", r2)
+            elif id_key:
+                repo._set(table, str(r.get(id_key)), r2)
+            else:
+                repo._add(table, r2)
         print(f"  {table:<20} {len(rows)}행 복사 완료")
 
     print(f"\n{'행 합계' if args.dry_run else '이전 완료'}: {total}행")

@@ -50,15 +50,15 @@ class BetmanFirestoreCollector(BetmanCollector):
         if not self.settings.configured:
             return
         try:
-            # 저장 레포가 firebase app 을 초기화하므로 재사용
             from ...storage.firestore_repo import FirestoreMatchRepository
 
             repo = FirestoreMatchRepository(self.settings)
-            col = repo._db.collection("betman_manual_odds")
-            query = col.where("sales_open", "==", True)
+            rows = repo.read_collection("betman_manual_odds")
+            # 클라이언트 측 필터(REST 전체 읽기 후)
+            rows = [r for r in rows if r.get("sales_open", True)]
             if self.round_no:
-                query = query.where("round_no", "==", self.round_no)
-            self._rows = [d.to_dict() for d in query.stream()]
+                rows = [r for r in rows if str(r.get("round_no")) == self.round_no]
+            self._rows = rows
         except Exception:
             self._rows = []
 
