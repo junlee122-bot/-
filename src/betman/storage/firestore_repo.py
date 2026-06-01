@@ -101,9 +101,11 @@ class FirestoreMatchRepository(MatchRepository, PickLogRepository):
         )
         if not self.project_id:
             raise RuntimeError("project_id 를 알 수 없습니다.")
+        # DB ID: 보통 "(default)" 지만, named DB("default" 등)도 지원.
+        db_id = self.settings.database_id or "(default)"
         self._base = (
             f"https://firestore.googleapis.com/v1/projects/{self.project_id}"
-            f"/databases/(default)/documents"
+            f"/databases/{db_id}/documents"
         )
         self._creds = None
 

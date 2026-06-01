@@ -44,6 +44,8 @@ export function getDb(): Firestore {
   } else {
     app = initializeApp({ credential: cert(loadServiceAccount()) });
   }
-  _db = getFirestore(app);
+  // named DB(예: "default") 지원. 미지정이면 (default).
+  const dbId = process.env.FIREBASE_DATABASE_ID;
+  _db = dbId ? getFirestore(app, dbId) : getFirestore(app);
   return _db;
 }

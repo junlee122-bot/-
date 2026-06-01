@@ -166,6 +166,8 @@ class FirebaseSettings:
     credentials_path: str | None = None
     credentials_json: str | None = None
     credentials_b64: str | None = None
+    # Firestore 데이터베이스 ID. 기본 "(default)". named DB(예: "default")면 지정.
+    database_id: str | None = None
 
     @property
     def configured(self) -> bool:
@@ -181,5 +183,6 @@ def load_firebase_settings() -> FirebaseSettings:
         credentials_path=env.get("GOOGLE_APPLICATION_CREDENTIALS"),
         credentials_json=env.get("FIREBASE_SERVICE_ACCOUNT"),
         credentials_b64=env.get("FIREBASE_SERVICE_ACCOUNT_BASE64"),
+        database_id=env.get("FIREBASE_DATABASE_ID"),
     )
 
