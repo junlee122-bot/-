@@ -40,6 +40,10 @@ class PickAnalysis:
     mean_reversion: bool = False  # 기대지표 좋은데 최근 결과 나쁜 팀 신호
     line: float | None = None     # 핸디캡/언오버 기준점
     model_based: bool = False     # 파생마켓(포아송 추정) 여부 — 신뢰도 낮음
+    # 켈리 베팅 비율 (자금 대비). 화면에서 자금×비율 로 금액 환산.
+    kelly_aggressive: float = 0.0  # 환급률 무시(해외 공정확률 우위 기준)
+    kelly_realistic: float = 0.0   # 환급률 63% 반영(실제 EV 기준, 보통 0)
+    explanation: str = ""          # 사람이 읽는 한 줄 설명
     supporting_signals: tuple[SentimentFlag, ...] = ()
     notes: tuple[str, ...] = ()
 

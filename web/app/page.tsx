@@ -1,15 +1,8 @@
 import { getDashboardData } from "@/lib/data";
-import { SPORT_LABEL } from "@/lib/types";
-import { PickTable } from "./PickTable";
+import { Picks } from "./Picks";
 
 // 매 요청마다 최신 데이터를 읽는다 (분석 결과가 자주 바뀜).
 export const dynamic = "force-dynamic";
-
-const CORE = [
-  { key: "soccer", icon: "⚽" },
-  { key: "baseball", icon: "⚾" },
-  { key: "basketball", icon: "🏀" },
-];
 
 export default async function Home() {
   const data = await getDashboardData();
@@ -96,34 +89,16 @@ export default async function Home() {
         </div>
       </div>
 
-      {CORE.map(({ key, icon }) => {
-        const picks = data.picksBySport[key] ?? [];
-        return (
-          <section className="section" key={key}>
-            <div className="section-head">
-              <span className="section-icon">{icon}</span>
-              <h2>{SPORT_LABEL[key] ?? key}</h2>
-              <span className="chip">value 순</span>
-              <span className="chip">{picks.length}픽</span>
-            </div>
-            <PickTable picks={picks} />
-          </section>
-        );
-      })}
+      <Picks picksBySport={data.picksBySport} notable={data.notable} />
 
-      <section className="section">
-        <div className="section-head">
-          <span className="section-icon">⭐</span>
-          <h2>주목 픽</h2>
-          <span className="chip">비핵심 종목 · 기준선 통과</span>
-          <span className="chip">{data.notable.length}픽</span>
-        </div>
-        {data.notable.length === 0 ? (
-          <div className="empty">기준선을 넘는 비핵심 종목 픽이 없습니다.</div>
-        ) : (
-          <PickTable picks={data.notable} />
-        )}
-      </section>
+      <div className="banner" style={{ marginTop: 8 }}>
+        <span className="ico">💡</span>
+        <span>
+          각 픽을 <strong>클릭</strong>하면 쉬운 말 설명과 추천 베팅액(공격적 ·
+          현실)이 펼쳐집니다. <strong>공격적</strong>은 환급률을 뺀 이론상 최대,
+          <strong> 현실</strong>은 환급률 63%까지 반영한 금액(대부분 0원)입니다.
+        </span>
+      </div>
 
       <div className="footer">
         <p>

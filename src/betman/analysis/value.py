@@ -35,6 +35,7 @@ from .devig import ProportionalDevig, compute_fair_line
 from .market import summarize_movements
 from .ratings import EloBook, win_draw_loss_probs
 from .sentiment import RuleBasedSentimentClassifier
+from .staking import build_explanation, kelly_pair
 
 
 # 종목별 value 점수 캘리브레이션 계수 (백테스트로 갱신 대상)
@@ -282,6 +283,21 @@ class DefaultValueAnalyzer(ValueAnalyzer):
                 notes.append("평균회귀 후보(기대지표>결과)")
             notes.append(f"데이터신뢰 {data_conf:.0%}")
 
+            # 베팅액 추천(켈리) + 사람 말 설명
+            kelly_agg, kelly_real = kelly_pair(blended_p, betman_odds)
+            explanation = build_explanation(
+                home=bundle.match.home.name,
+                away=bundle.match.away.name,
+                market=off.market,
+                outcome=oc,
+                line=off.line,
+                betman_odds=betman_odds,
+                fair_prob=fair_p,
+                edge_pct=edge_pct,
+                expected_value=expected_value,
+                model_based=model_based,
+            )
+
             picks.append(
                 PickAnalysis(
                     match_id=bundle.match.id,
@@ -297,6 +313,9 @@ class DefaultValueAnalyzer(ValueAnalyzer):
                     mean_reversion=mr,
                     line=off.line,
                     model_based=model_based,
+                    kelly_aggressive=kelly_agg,
+                    kelly_realistic=kelly_real,
+                    explanation=explanation,
                     supporting_signals=used,
                     notes=tuple(notes),
                 )

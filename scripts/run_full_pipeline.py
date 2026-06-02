@@ -52,6 +52,9 @@ def pick_to_row(pick, bundle) -> dict:
         "mean_reversion": pick.mean_reversion,
         "line": pick.line,
         "model_based": pick.model_based,
+        "kelly_aggressive": pick.kelly_aggressive,
+        "kelly_realistic": pick.kelly_realistic,
+        "explanation": pick.explanation,
         "is_core": m.sport.is_core,
         "notes": list(pick.notes),
         "signals": [

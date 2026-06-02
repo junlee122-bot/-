@@ -19,6 +19,9 @@ export interface Pick {
   mean_reversion: boolean;
   line: number | null;
   model_based: boolean;
+  kelly_aggressive: number; // 환급률 무시 켈리 비율 (자금 대비)
+  kelly_realistic: number; // 환급률 63% 반영 켈리 비율 (보통 0)
+  explanation: string; // 사람이 읽는 설명
   is_core: boolean;
   notes: string[] | null;
   signals: { polarity: string; confidence: number; summary: string }[] | null;
