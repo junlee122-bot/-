@@ -7,21 +7,11 @@ export const dynamic = "force-dynamic";
 
 interface SaveBody {
   round_no: string;
-  sport: string;
   games: ParsedGame[];
 }
 
-const VALID_SPORTS = new Set([
-  "soccer",
-  "baseball",
-  "basketball",
-  "volleyball",
-  "hockey",
-  "esports",
-]);
-
-// 붙여넣기 파싱 결과를 betman_manual_odds 에 upsert 저장.
-// 모든 마켓(승무패/핸디캡/언오버/SUM)을 저장한다. 분석/매칭은 Python.
+// 붙여넣기 파싱 결과를 betman_manual_odds 에 저장. 종목은 게임별로 자동 인식된
+// 값을 쓴다. 모든 마켓(승무패/승1패/핸디캡/언오버/SUM)을 저장. 분석/매칭은 Python.
 export async function POST(req: NextRequest) {
   let body: SaveBody;
   try {
@@ -30,10 +20,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "잘못된 요청" }, { status: 400 });
   }
 
-  const { round_no, sport, games } = body;
-  if (!round_no || !VALID_SPORTS.has(sport) || !Array.isArray(games)) {
+  const { round_no, games } = body;
+  if (!round_no || !Array.isArray(games) || games.length === 0) {
     return NextResponse.json(
-      { error: "round_no / sport / games 확인" },
+      { error: "round_no / games 확인" },
       { status: 400 }
     );
   }
@@ -41,7 +31,7 @@ export async function POST(req: NextRequest) {
   const rows = games.flatMap((g) =>
     g.offerings.map((o) => ({
       round_no,
-      sport,
+      sport: g.sport,
       home: g.home,
       away: g.away,
       market: g.market,
@@ -61,11 +51,8 @@ export async function POST(req: NextRequest) {
     const db = getDb();
     const col = db.collection("betman_manual_odds");
 
-    // 같은 회차·종목을 다시 붙여넣으면 교체(기존 삭제 후 삽입)
-    const existing = await col
-      .where("round_no", "==", round_no)
-      .where("sport", "==", sport)
-      .get();
+    // 같은 회차를 다시 붙여넣으면 교체(기존 삭제 후 삽입)
+    const existing = await col.where("round_no", "==", round_no).get();
     // 삭제 + 삽입을 배치로 (Firestore 배치 한도 500)
     let batch = db.batch();
     let ops = 0;

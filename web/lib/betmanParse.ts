@@ -14,7 +14,14 @@ export type Outcome =
   | "odd"
   | "even";
 
-export type Market = "match_1x2" | "handicap" | "totals" | "sum";
+export type Market = "match_1x2" | "moneyline" | "handicap" | "totals" | "sum";
+export type Sport =
+  | "soccer"
+  | "baseball"
+  | "basketball"
+  | "volleyball"
+  | "hockey"
+  | "esports";
 
 export interface ParsedOffering {
   outcome: Outcome;
@@ -23,6 +30,7 @@ export interface ParsedOffering {
 
 export interface ParsedGame {
   gameNo: string;
+  sport: Sport;
   home: string;
   away: string;
   market: Market;
@@ -32,47 +40,70 @@ export interface ParsedGame {
 }
 
 const ODDS_RE = /(\d{1,3}\.\d{1,2})/;
+// "승1패" 의 '1'(무) 포함. 팀명 뒤 선택지 토큰.
 const PICK_RE =
-  /^(.*?)\s*vs\s*(.+?)(승|무|패|언더|오버|홀|짝)\s*$/i;
+  /^(.*?)\s*vs\s*(.+?)(승|무|패|언더|오버|홀|짝|1)\s*$/i;
+
+const SPORT_KO: Record<string, Sport> = {
+  축구: "soccer",
+  야구: "baseball",
+  농구: "basketball",
+  배구: "volleyball",
+  아이스하키: "hockey",
+  하키: "hockey",
+  이스포츠: "esports",
+  e스포츠: "esports",
+};
 
 interface MarketInfo {
+  sport: Sport;
   market: Market;
   line: number | null;
   label: string;
 }
 
-// 마켓 헤더 줄 해석. 인식 못 하면 null(그 블록 건너뜀).
+// 마켓 헤더 줄 해석. 인식 못 하거나 미지원(전반 등)이면 null(그 블록 건너뜀).
 function parseMarketHeader(line: string): MarketInfo | null {
   const l = line.trim();
-  if (!/^(축구|야구|농구|배구|아이스하키|하키|이스포츠|e스포츠)/.test(l))
-    return null;
+  const sportKey = Object.keys(SPORT_KO).find((k) => l.startsWith(k));
+  if (!sportKey) return null;
+  const sport = SPORT_KO[sportKey];
 
-  // 핸디캡 / 소수핸디캡: "H -1.0", "H +1.0", "H -3.5"
+  // 전반/후반 등 부분 경기 마켓은 모델이 없으므로 제외
+  if (/전반|후반|이닝|쿼터|세트/.test(l)) return null;
+
+  // 핸디캡 / 소수핸디캡: "H -1.0", "H +1.0", "H -2.5"
   if (/핸디캡/.test(l)) {
     const m = l.match(/H\s*([+\-]?\d+(?:\.\d+)?)/i);
     const ln = m ? parseFloat(m[1]) : null;
-    return { market: "handicap", line: ln, label: l.replace(/^\S+\s*/, "") };
+    return { sport, market: "handicap", line: ln, label: `핸디캡 ${ln ?? ""}` };
   }
   // 언더오버 U/O 2.5
   if (/언더오버|U\/O/i.test(l)) {
     const m = l.match(/(\d+(?:\.\d+)?)/);
     const ln = m ? parseFloat(m[1]) : null;
-    return { market: "totals", line: ln, label: `U/O ${ln ?? ""}` };
+    return { sport, market: "totals", line: ln, label: `U/O ${ln ?? ""}` };
   }
   // SUM 홀짝
   if (/SUM/i.test(l)) {
-    return { market: "sum", line: null, label: "SUM 홀짝" };
+    return { sport, market: "sum", line: null, label: "SUM 홀짝" };
   }
-  // 승무패 / 승패
-  if (/승무패|승패/.test(l)) {
-    return { market: "match_1x2", line: null, label: "승무패" };
+  // 승1패(야구 무승부 포함 3갈래) / 승무패(축구·하키 3갈래)
+  if (/승1패|승무패/.test(l)) {
+    return { sport, market: "match_1x2", line: null, label: "승무패" };
+  }
+  // 승패(2갈래 머니라인)
+  if (/승패/.test(l)) {
+    return { sport, market: "moneyline", line: null, label: "승패" };
   }
   return null;
 }
 
+// '1' = 무(승1패의 무). 승/무/패 + 언오버 + 홀짝.
 const OUTCOME_MAP: Record<string, Outcome> = {
   승: "home",
   무: "draw",
+  "1": "draw",
   패: "away",
   오버: "over",
   언더: "under",
@@ -122,9 +153,9 @@ export function parseBetmanText(raw: string): ParsedGame[] {
       const home = normalizeTeam(pick[1]);
       const away = normalizeTeam(pick[2]);
       const outcome = OUTCOME_MAP[pick[3]];
-      // 같은 줄에 배당이 붙는 경우: "...승1.14"
+      // 같은 줄에 배당이 붙는 경우: "...승1.14" (승1패의 '1' 포함)
       const sameLine = line.match(
-        /(승|무|패|언더|오버|홀|짝)\s*(\d{1,3}\.\d{1,2})/
+        /(승|무|패|언더|오버|홀|짝|1)\s*(\d{1,3}\.\d{1,2})/
       );
       if (sameLine) {
         addOffering(games, curGameNo, home, away, curMarket, outcome, parseFloat(sameLine[2]));
@@ -161,12 +192,16 @@ function addOffering(
   outcome: Outcome,
   odds: number
 ) {
-  // 게임번호별로 마켓이 다르므로 gameNo 단위로 묶는다
-  const key = gameNo || `${home}:${away}:${mkt.label}`;
+  // 게임번호별로 마켓이 다르므로 gameNo 단위로 묶는다.
+  // gameNo 가 없으면(복사 시작점 등) 팀+마켓+라인으로 고유 키 생성.
+  const key = gameNo
+    ? `${gameNo}`
+    : `${mkt.sport}:${home}:${away}:${mkt.market}:${mkt.line ?? ""}`;
   let g = games.get(key);
   if (!g) {
     g = {
       gameNo,
+      sport: mkt.sport,
       home,
       away,
       market: mkt.market,
