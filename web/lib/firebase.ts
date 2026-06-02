@@ -16,22 +16,47 @@ import { getFirestore, Firestore } from "firebase-admin/firestore";
 //   FIREBASE_SERVICE_ACCOUNT_BASE64 위 JSON 의 base64 (Vercel 한 줄 입력용)
 let _db: Firestore | null = null;
 
-function loadServiceAccount(): ServiceAccount {
+function parseServiceAccount(): Record<string, string> {
   const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
-  const raw = b64
-    ? Buffer.from(b64, "base64").toString("utf-8")
-    : process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) {
-    throw new Error(
-      "Firebase 미설정: FIREBASE_SERVICE_ACCOUNT(JSON) 또는 " +
-        "FIREBASE_SERVICE_ACCOUNT_BASE64 환경변수를 설정하세요."
-    );
+  const json = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+  // 1) base64 우선: 공백/줄바꿈 제거 후 디코딩 → JSON 파싱
+  if (b64 && b64.trim()) {
+    const cleaned = b64.replace(/\s+/g, "");
+    let decoded: string;
+    try {
+      decoded = Buffer.from(cleaned, "base64").toString("utf-8");
+    } catch {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 디코딩 실패");
+    }
+    // 디코딩 결과가 '{' 로 시작하지 않으면 base64 값이 손상된 것
+    if (!decoded.trimStart().startsWith("{")) {
+      throw new Error(
+        "FIREBASE_SERVICE_ACCOUNT_BASE64 값이 손상되었습니다(디코딩 결과가 JSON이 " +
+          "아님). Vercel 환경변수에 base64 전체를 공백 없이 다시 붙여넣으세요."
+      );
+    }
+    return JSON.parse(decoded);
   }
-  const parsed = JSON.parse(raw);
+
+  // 2) JSON 문자열 직접
+  if (json && json.trim()) {
+    return JSON.parse(json);
+  }
+
+  throw new Error(
+    "Firebase 미설정: FIREBASE_SERVICE_ACCOUNT_BASE64(권장) 또는 " +
+      "FIREBASE_SERVICE_ACCOUNT 환경변수를 설정하세요."
+  );
+}
+
+function loadServiceAccount(): ServiceAccount {
+  const parsed = parseServiceAccount();
   return {
     projectId: parsed.project_id,
     clientEmail: parsed.client_email,
-    privateKey: parsed.private_key,
+    // 일부 환경에서 \n 이 escape 된 채 들어오면 실제 줄바꿈으로 복원
+    privateKey: (parsed.private_key || "").replace(/\\n/g, "\n"),
   };
 }
 
