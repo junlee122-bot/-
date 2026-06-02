@@ -112,25 +112,26 @@ export function PickTable({
                         <div className="bet-box">
                           <div>
                             <div className="bet-label">
-                              추천 베팅액 (공격적 · 환급률 무시)
+                              🔥 굳이 건다면 (수수료 무시)
                             </div>
                             <div className="bet-val pos">
-                              {aggWon >= 1 ? won(aggWon) : "0원 (우위 없음)"}
+                              {aggWon >= 1 ? won(aggWon) : "걸 만한 우위 없음"}
                             </div>
                             <div className="muted bet-note">
-                              해외 공정확률 기준 우위만 본 1/4 켈리. 환급률을
-                              빼고 본 ‘이론상 최대’ 금액.
+                              베트맨 수수료(환급률)를 빼고, ‘해외 기준 우위가
+                              있다면 이만큼’이라는 이론상 최대 금액입니다. 실제로는
+                              이만큼 걸면 손해 볼 가능성이 큽니다.
                             </div>
                           </div>
                           <div>
                             <div className="bet-label">
-                              현실 베팅액 (환급률 63% 반영)
+                              ✅ 솔직한 추천액 (수수료 반영)
                             </div>
                             <div className="bet-val">
-                              {realWon >= 1 ? won(realWon) : "0원 (비권장)"}
+                              {realWon >= 1 ? won(realWon) : "0원 (안 거는 게 이득)"}
                             </div>
                             <div className="muted bet-note">
-                              환급률까지 넣으면 장기 기대값이 마이너스라 대부분
+                              베트맨 수수료까지 계산하면 길게 봐서 손해라, 대부분
                               0원이 정답입니다.
                             </div>
                           </div>

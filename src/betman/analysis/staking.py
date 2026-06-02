@@ -82,39 +82,63 @@ def build_explanation(
     expected_value: float,
     model_based: bool,
 ) -> str:
-    """한 픽을 일상어로 설명하는 한 문단."""
+    """한 픽을 아주 쉬운 말로 설명한다. 용어 대신 비유, 결론 먼저."""
     oc_ko = _OUTCOME_KO.get(outcome, outcome.value)
     mk_ko = _MARKET_KO.get(market, market.value)
     line_txt = ""
     if line is not None:
         line_txt = f" {line:+g}" if market == MarketType.HANDICAP else f" {line:g}"
 
-    fair_pct = fair_prob * 100
-    implied = (1.0 / betman_odds) * 100 if betman_odds > 0 else 0
-    # 베트맨 배당이 암시하는 확률 vs 해외(샤프) 공정확률 비교
+    fair_pct = round(fair_prob * 100)
+    implied = round((1.0 / betman_odds) * 100) if betman_odds > 0 else 0
+    loss_per_10k = expected_value * 10000  # 1만원당 평균 손익(원)
+
     parts: list[str] = []
+
+    # 1) 무엇에 거는 건지
     parts.append(
-        f"{home} vs {away} — '{mk_ko}{line_txt} {oc_ko}' 에 베트맨 배당 "
-        f"{betman_odds:.2f}배."
+        f"이건 「{home} vs {away}」 경기에서 ‘{mk_ko}{line_txt} {oc_ko}’ 에 "
+        f"거는 겁니다. 맞으면 1만원이 {betman_odds*10000:,.0f}원이 됩니다."
     )
+
+    # 2) 베트맨 배당이 보는 확률 vs 진짜 실력 비교 (쉬운 비유)
     parts.append(
-        f"이 배당은 '{implied:.0f}% 확률'을 의미하는데, 해외 샤프 시장 기준 실제 "
-        f"확률은 약 {fair_pct:.0f}% 로 추정됩니다."
+        f"베트맨은 이게 100번 중 약 {implied}번 일어난다고 보고 배당을 매겼는데, "
+        f"해외 큰손들의 배당을 보면 실제로는 100번 중 약 {fair_pct}번 일어날 "
+        f"일입니다."
     )
+
+    # 3) 그래서 싼가 비싼가 (가격 비유)
     if edge_pct >= 0:
         parts.append(
-            f"즉 해외 기준으로는 배당이 {edge_pct:+.0f}% 만큼 후하게 매겨져 "
-            f"'상대적으로 가치 있는' 쪽입니다."
+            f"즉 실제 가치보다 배당을 후하게 쳐줘서, 다른 항목들보다 "
+            f"‘그나마 덜 손해 보는’ 쪽입니다."
         )
     else:
         parts.append(
-            f"해외 기준으로도 배당이 {edge_pct:.0f}% 불리해 가치가 낮습니다."
+            "즉 실제 가치보다 배당이 박해서, 별로 살 만한 항목이 아닙니다."
         )
-    # EV 는 환급률 반영 — 거의 항상 마이너스
-    parts.append(
-        f"단, 베트맨 환급률(63%)을 반영한 실제 기대값은 1만원당 "
-        f"{expected_value*10000:,.0f}원으로, 장기적으로는 {'손실' if expected_value < 0 else '이익'}입니다."
-    )
+
+    # 4) 그래도 결국 환급률 때문에 장기 손해 (핵심, 솔직하게)
+    if loss_per_10k < 0:
+        parts.append(
+            f"하지만 베트맨은 건 돈의 약 37%를 수수료처럼 떼갑니다(환급률 63%). "
+            f"그래서 이 항목도 1만원을 걸면 평균적으로 "
+            f"{abs(loss_per_10k):,.0f}원쯤 잃는 게 정상입니다. "
+            f"즉 ‘잘 고른 손해’지 ‘버는 픽’이 아닙니다."
+        )
+    else:
+        parts.append(
+            f"드물게 환급률을 감안해도 평균 +{loss_per_10k:,.0f}원으로 살짝 유리한 "
+            f"항목이지만, 표본·모델 오차를 감안하면 확신은 금물입니다."
+        )
+
+    # 5) 모델 추정 경고
     if model_based:
-        parts.append("(이 마켓은 포아송 모델 추정값이라 신뢰도가 낮습니다.)")
+        parts.append(
+            "참고로 이 마켓(핸디캡·언더오버·홀짝 등)은 직접 비교할 해외 배당이 "
+            "없어 계산으로 추정한 값이라, 숫자를 그대로 믿기 어렵습니다."
+        )
+
     return " ".join(parts)
+
