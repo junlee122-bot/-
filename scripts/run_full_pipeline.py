@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import asdict
 from datetime import date
@@ -93,32 +94,35 @@ def main() -> int:
     )
     print(f"• 수집: {len(bundles)}경기")
 
-    # 2) 저장(경기/배당/팀)
-    try:
-        repo.save_bundles(bundles)
-        print("• 경기/배당 적재 OK")
-    except Exception as e:
-        print(f"✗ 적재 실패: {e}")
-        repo.close()
-        return 1
-
-    # 3) 분석 → picks + pick_logs 적재
+    # 2) 분석 → picks 먼저 적재 (대시보드가 읽는 건 picks 뿐 → 최우선)
     analyzer = DefaultValueAnalyzer()
-    bundle_by_id = {b.match.id: b for b in bundles}
-    pick_rows, log_count = [], 0
+    pick_rows, snapshots = [], []
     for b in bundles:
         for p in analyzer.analyze(b):
             pick_rows.append(pick_to_row(p, b))
             if b.features is not None:
-                repo.save_pick_snapshot(asdict(snapshot_from_pick(p, b.features)))
-                log_count += 1
-    # 기존 picks 비우고 새로 적재(대시보드는 최신 분석만 표시)
+                snapshots.append(asdict(snapshot_from_pick(p, b.features)))
     repo.replace_all_picks(pick_rows)
     print(f"• 분석 픽 {len(pick_rows)}건 → picks 적재 OK (기존 교체)")
-    print(f"• 픽 로그 {log_count}건 → pick_logs 적재 OK (사후 검증)")
+
+    # 3) 사후검증 로그 (picks 다음 우선순위)
+    for snap in snapshots:
+        repo.save_pick_snapshot(snap)
+    print(f"• 픽 로그 {len(snapshots)}건 → pick_logs 적재 OK")
+
+    # 4) 원시 데이터(경기/배당) 적재 — 무겁고 대시보드에 불필요.
+    #    SAVE_RAW=1 일 때만. (Firestore REST 는 문서당 1요청이라 느림)
+    if os.environ.get("SAVE_RAW") == "1":
+        try:
+            repo.save_bundles(bundles)
+            print("• 원시 경기/배당 적재 OK (SAVE_RAW=1)")
+        except Exception as e:
+            print(f"  (원시 적재 일부 실패: {str(e)[:80]})")
+    else:
+        print("• 원시 경기/배당 적재 건너뜀 (SAVE_RAW=1 로 활성화)")
 
     repo.close()
-    print("\n✓ 전체 파이프라인 완료. 대시보드에서 picks 를 표시할 수 있습니다.")
+    print("\n✓ 완료. 대시보드에 picks 가 표시됩니다.")
     return 0
 
 

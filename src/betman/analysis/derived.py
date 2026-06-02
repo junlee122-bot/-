@@ -210,6 +210,27 @@ def totals_probs(model: GoalModel, line: float) -> dict[Outcome, float]:
     return {Outcome.UNDER: under / s, Outcome.OVER: over / s}
 
 
+def match_1x2_probs(model: GoalModel) -> dict[Outcome, float]:
+    """정시 결과 승/무/패 확률 (포아송). 야구 '승1패'(무 포함 3갈래)용.
+
+    야구는 정규이닝 무승부가 드물지만 베트맨 승1패는 이를 별도 베팅으로 발매한다.
+    포아송 격자에서 home>away / == / < 로 집계한다.
+    """
+    cap = _cap_for(model)
+    grid = _score_grid(model, cap)
+    home = draw = away = 0.0
+    for i in range(cap + 1):
+        for j in range(cap + 1):
+            p = grid[i][j]
+            if i > j:
+                home += p
+            elif i == j:
+                draw += p
+            else:
+                away += p
+    return {Outcome.HOME: home, Outcome.DRAW: draw, Outcome.AWAY: away}
+
+
 def sum_oddeven_probs(model: GoalModel) -> dict[Outcome, float]:
     """총득점 홀/짝 확률."""
     cap = _cap_for(model)

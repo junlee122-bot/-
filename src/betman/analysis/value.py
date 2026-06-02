@@ -27,6 +27,7 @@ from .derived import (
     handicap_probs,
     infer_goal_model,
     infer_goal_model_2way,
+    match_1x2_probs,
     sum_oddeven_probs,
     totals_probs,
 )
@@ -126,16 +127,28 @@ class DefaultValueAnalyzer(ValueAnalyzer):
         self._classifier = classifier or RuleBasedSentimentClassifier()
         self._elo = elo or EloBook()
 
-    def _fair_for(self, off, fair, goal_model) -> tuple[float, bool]:
+    def _fair_for(self, off, fair, goal_model, sport) -> tuple[float, bool]:
         """발매 항목의 공정확률과 모델기반 여부를 반환.
 
-        1X2/머니라인은 Pinnacle de-vig 직접 사용(model_based=False).
-        핸디캡/언오버/SUM은 포아송 모델 추정(model_based=True). 모델이 없으면
-        (2갈래 종목 등) 0 반환 → 호출측에서 스킵.
+        - 머니라인(2갈래): Pinnacle de-vig 직접 (model_based=False)
+        - 1X2: 무승부 있는 종목(축구·하키)만 Pinnacle 직접. 야구 '승1패'처럼
+          무승부가 드문 종목의 3갈래는 Pinnacle 이 무 확률을 안 줘서 직접 비교가
+          불가 → 포아송 모델로 정시(9이닝) 무/승/패 추정(model_based=True).
+        - 핸디캡/언오버/SUM: 포아송 모델 추정.
+        모델이 없거나 평가 불가하면 0 반환 → 호출측에서 스킵.
         """
         m = off.market
-        if m in (MarketType.MATCH_1X2, MarketType.MONEYLINE):
+        if m == MarketType.MONEYLINE:
             return fair.fair_probs.get(off.outcome, 0.0), False
+        if m == MarketType.MATCH_1X2:
+            if sport.has_draw:
+                # 축구·하키: Pinnacle 1X2 직접
+                return fair.fair_probs.get(off.outcome, 0.0), False
+            # 야구 승1패: 포아송 모델로 정시 무/승/패 추정
+            if goal_model is None:
+                return 0.0, False
+            probs = match_1x2_probs(goal_model)
+            return probs.get(off.outcome, 0.0), True
         if goal_model is None:
             return 0.0, False  # 파생마켓인데 모델 없음 → 평가 불가
         if m == MarketType.HANDICAP and off.line is not None:
@@ -210,7 +223,7 @@ class DefaultValueAnalyzer(ValueAnalyzer):
             # 마켓별 공정확률 결정:
             #  - 1X2/머니라인: Pinnacle de-vig 직접 사용 (가장 신뢰도 높음)
             #  - 핸디캡/언오버/SUM: 포아송 모델 추정 (model_based=True)
-            fair_p, model_based = self._fair_for(off, fair, goal_model)
+            fair_p, model_based = self._fair_for(off, fair, goal_model, sport)
             if fair_p <= 0:
                 continue
             consensus_p = fair.consensus_probs.get(oc, fair_p)
