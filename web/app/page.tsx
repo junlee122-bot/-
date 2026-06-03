@@ -89,7 +89,11 @@ export default async function Home() {
         </div>
       </div>
 
-      <Picks picksBySport={data.picksBySport} notable={data.notable} />
+      <Picks
+        picksBySport={data.picksBySport}
+        notable={data.notable}
+        topPicks={data.topPicks}
+      />
 
       <div className="banner" style={{ marginTop: 8 }}>
         <span className="ico">💡</span>

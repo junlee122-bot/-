@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -25,7 +25,7 @@ from betman.analysis.value import DefaultValueAnalyzer  # noqa: E402
 from betman.analysis.provenance import snapshot_from_pick  # noqa: E402
 
 
-def pick_to_row(pick, bundle) -> dict:
+def pick_to_row(pick, bundle, analyzed_at: str) -> dict:
     """PickAnalysis → picks 테이블 행 (대시보드 표시용 비정규화 포함)."""
     m = bundle.match
     return {
@@ -65,6 +65,7 @@ def pick_to_row(pick, bundle) -> dict:
             }
             for s in pick.supporting_signals
         ],
+        "analyzed_at": analyzed_at,
     }
 
 
@@ -99,10 +100,11 @@ def main() -> int:
 
     # 2) 분석 → picks 먼저 적재 (대시보드가 읽는 건 picks 뿐 → 최우선)
     analyzer = DefaultValueAnalyzer()
+    analyzed_at = datetime.now(timezone.utc).isoformat()
     pick_rows, snapshots = [], []
     for b in bundles:
         for p in analyzer.analyze(b):
-            pick_rows.append(pick_to_row(p, b))
+            pick_rows.append(pick_to_row(p, b, analyzed_at))
             if b.features is not None:
                 snapshots.append(asdict(snapshot_from_pick(p, b.features)))
     repo.replace_all_picks(pick_rows)
